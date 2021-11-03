@@ -191,6 +191,9 @@ plt.legend(["Test", "Train"])
 plt.grid()
 plt.show()
 
+# %%
+measurements_plots(y_test, y_pred)
+
 
 # %% for question 6,7
 
@@ -230,3 +233,24 @@ spark = "MFVFLVLLPLVSSQCVNLTTRTQLPPAYTNSFTRGVYYPDKVFRSSVLHSTQDLFLPFFSNVTWFHAIHVS
         "PAICHDGKAHFPREGVFVSNGTHWFVTQRNFYEPQIITTDNTFVSGNCDVVIGIVNNTVYDPLQPELDSFKEELDKYFKNHTSPDVDLGDISGINASV" \
         "VNIQKEIDRLNEVAKNLNESLIDLQELGKYEQYIKWPWYIWLGFIAGLIAIVMVTIMLCCMTSCCSCLKGCCSCGSCCKFDEDDSEPVLKGVKLHYT"
 print(predict_peptide_from_spark(spark))
+
+# %%
+rand_input = torch.randn(size=(1, 180), device=device, dtype=torch.float, requires_grad=True)
+y = torch.tensor([1])
+iter = 100
+
+error = []
+for i in range(iter):
+    epoch_loss = 0
+
+    optimizer.zero_grad()
+    prediction = model(rand_input)
+    loss = loss_fn(prediction, y)
+
+    loss.backward()
+    optimizer.step()
+
+    epoch_loss += loss.item()
+
+    error.append(epoch_loss)
+print(f"Train Loss: {epoch_loss :.5f};")
