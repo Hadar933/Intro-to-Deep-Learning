@@ -25,7 +25,9 @@ def basic_plot(x_data, y_data, title, x_title, y_title):
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 neg = pd.read_csv('Data/neg_A0201.txt', names=['seq'])
+neg = neg[:500]
 pos = pd.read_csv('Data/pos_A0201.txt', names=['seq'])
+pos = pos[:500]
 amino_letters = 'ACDEFGHIKLMNPQRSTVWY'  # Amino acids signs
 one_hot_values = [str(i) + acid for i in range(9) for acid in amino_letters]  # one hot features
 
@@ -141,7 +143,8 @@ def test_iteration(dataloader, model, loss_fn, test_loss_arr):
             y = y[..., np.newaxis]
             prediction = model(X)
             prediction = torch.round(torch.sigmoid(prediction))
-            all_predictions.append(prediction.cpu().numpy())
+            as_lst = [item.item() for item in prediction]
+            all_predictions += as_lst
             loss = loss_fn(prediction, y)
             epoch_loss += loss.item()
 
@@ -173,12 +176,13 @@ test_dataloader = DataLoader(test_data, batch_size)
 
 # %% training
 test_loss_arr, train_loss_arr = [], []
-y_pred = []
+y_pred = 0
 for t in range(epochs):
     print(f"Epoch: {t}")
     train_iteration(train_dataloader, model, loss_fn, optimizer, train_loss_arr)
-    curr_predict = test_iteration(test_dataloader, model, loss_fn, test_loss_arr)
-    y_pred.append(curr_predict)
+    y_pred = test_iteration(test_dataloader, model, loss_fn, test_loss_arr)
+
+final_pred = np.array([pred[0] for sublist in y_pred for pred in sublist])
 
 # %% plotting train and test error
 x_range = range(epochs)
@@ -192,7 +196,7 @@ plt.grid()
 plt.show()
 
 # %%
-measurements_plots(y_test, y_pred)
+measurements_plots(y_test, final_pred)
 
 
 # %% for question 6,7
@@ -235,22 +239,5 @@ spark = "MFVFLVLLPLVSSQCVNLTTRTQLPPAYTNSFTRGVYYPDKVFRSSVLHSTQDLFLPFFSNVTWFHAIHVS
 print(predict_peptide_from_spark(spark))
 
 # %%
-rand_input = torch.randn(size=(1, 180), device=device, dtype=torch.float, requires_grad=True)
-y = torch.tensor([1])
-iter = 100
-
-error = []
-for i in range(iter):
-    epoch_loss = 0
-
-    optimizer.zero_grad()
-    prediction = model(rand_input)
-    loss = loss_fn(prediction, y)
-
-    loss.backward()
-    optimizer.step()
-
-    epoch_loss += loss.item()
-
-    error.append(epoch_loss)
-print(f"Train Loss: {epoch_loss :.5f};")
+# rand_input = torch.randn(size=(1, 180), device=device, dtype=torch.float, requires_grad=True)
+# y = torch.tensor([1])
