@@ -4,13 +4,30 @@ import torch.cuda
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
+from sklearn.preprocessing import StandardScaler
 import torch.utils.data as data_utils
+import matplotlib.pyplot as plt
+
+
+def basic_plot(x_data, y_data, title, x_title, y_title):
+    """
+    basic function that plots data
+    """
+    plt.plot(x_data, y_data)
+    plt.title(title)
+    plt.xlabel(x_title)
+    plt.ylabel(y_title)
+    plt.grid()
+
+
+"""#1. gloabal variables"""
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-neg = pd.read_csv('Data/neg_A0201.txt', names=['seq'])  # negative for covid samples
-neg = neg[:100]
-pos = pd.read_csv('Data/pos_A0201.txt', names=['seq'])  # positive for covid samples
-pos = pos[:100]
+neg = pd.read_csv('Data/neg_A0201.txt', names=['seq'])
+neg = neg[:300]
+pos = pd.read_csv('Data/pos_A0201.txt', names=['seq'])
+pos = pos[:300]
 amino_letters = 'ACDEFGHIKLMNPQRSTVWY'  # Amino acids signs
 one_hot_values = [str(i) + acid for i in range(9) for acid in amino_letters]  # one hot features
 
@@ -25,23 +42,28 @@ def generate_X(peptid_df):
     for i, peptid_name in enumerate(peptid_df['seq']):
         peptid_one_hot = [str(i) + acid for i, acid in enumerate(peptid_name)]  # columns that should be assigned 1
         peptid_df.at[i, peptid_one_hot] = 1
-    return peptid_df.drop(["seq"],axis=1)
+        if i % 100 == 0:
+            print(f"prepcocessing: completed {i}")
+    return peptid_df.drop(["seq"], axis=1)
 
 
 def preprocess():
     """
-
     :return: training and test X,y
     """
     X_pos, X_neg = generate_X(pos), generate_X(neg)
-    y_pos, y_neg = pd.DataFrame(np.ones(X_pos.shape[0])), pd.DataFrame(-np.ones(X_neg.shape[0]))
-    X, y = pd.concat([X_pos, X_neg]), pd.concat([y_pos, y_neg])
+    y_pos, y_neg = np.ones(X_pos.shape[0]), np.zeros(X_neg.shape[0])
+    X, y = pd.concat([X_pos, X_neg]), np.concatenate([y_pos, y_neg])
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
-    X_train_tensor, X_test_tensor = torch.tensor(X_train.values), torch.tensor(X_test.values)
-    y_train_tensor, y_test_tensor = torch.tensor(y_train.values), torch.tensor(y_test.values)
+    X_train_tensor = torch.tensor(X_train.values).float()
+    X_test_tensor = torch.tensor(X_test.values).float()
+    y_train_tensor = torch.tensor(y_train).float()
+    y_test_tensor = torch.tensor(y_test).float()
+
     train = data_utils.TensorDataset(X_train_tensor, y_train_tensor)
     test = data_utils.TensorDataset(X_test_tensor, y_test_tensor)
-    return train, test
+    return train, test, y_test
 
 
 class MLP(nn.Module):
@@ -52,10 +74,11 @@ class MLP(nn.Module):
     def __init__(self):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.Linear(180, 10),
+            nn.Linear(180, 360),
             nn.ReLU(),
-            nn.Linear(10, 1),
+            nn.Linear(360, 100),
             nn.ReLU(),
+            nn.Linear(100, 1)
         )
 
     def forward(self, x):
@@ -67,52 +90,142 @@ class MLP(nn.Module):
         return self.layers(x)
 
 
-def train(dataloader, nn_model, loss_fn, optimizer):
+def accuracy(y_pred, y_true):
+    """
+    calculates the accuracy given a prediction and true labels
+    """
+    rounded_y_pred = torch.round(torch.sigmoid(y_pred))
+    agree = (y_true == rounded_y_pred).sum()
+    return 100 * agree.float() / y_true.shape[0]
+
+
+"""#4. Train & Test methods"""
+
+
+def train_iteration(dataloader, model, loss_fn, optimizer, train_loss_arr):
+    """
+    trains the network using SGD (1 epoch)
+    """
     size = len(dataloader.dataset)
-    nn_model.train()
-    for batch, (X, y) in enumerate(dataloader):
+    model.train()
+
+    epoch_loss = 0
+    for X, y in dataloader:
         X, y = X.to(device), y.to(device)
+        optimizer.zero_grad()
+
+        y = y[..., np.newaxis]
         prediction = model(X)
         loss = loss_fn(prediction, y)
 
-        # backprop:
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        if batch % 100 == 0:
-            loss, current = loss.item(), batch * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+        epoch_loss += loss.item()
+
+    train_loss_arr.append(epoch_loss / size)
+    print(f"Train Loss: {epoch_loss / size :.5f};")
 
 
-def test(dataloader, model, loss_fn):
+def test_iteration(dataloader, model, loss_fn, test_loss_arr):
+    """
+    tests the trained model and provides train loss as well as a prediction
+    for the test data
+    """
     size = len(dataloader.dataset)
-    num_batches = len(dataloader)
-    model.eval()
-    test_loss, correct = 0, 0
-    with torch.no_grad():  # use this line when not using backprop (pyTorch performs some optimizations)
+    all_predictions = []
+    model.eval()  # tell pyTorch we do not use backprop
+
+    epoch_loss = 0
+    with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
-            pred = model(X)
-            test_loss += loss_fn(pred, y).item()
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
-    test_loss /= num_batches
-    correct /= size
-    print(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+            y = y[..., np.newaxis]
+            prediction = model(X)
+            prediction = torch.round(torch.sigmoid(prediction))
+            all_predictions.append(prediction.cpu().numpy())
+            loss = loss_fn(prediction, y)
+            epoch_loss += loss.item()
+
+        test_loss_arr.append(epoch_loss / size)
+        print(f"Test Loss: {epoch_loss / size :.5f};")
+
+    return all_predictions
 
 
-if __name__ == '__main__':
-    epochs, batch_size, learning_rate = 5, 100, 1e-3
-    train_data, test_data = preprocess()
-    model = MLP().to(device)
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+def measurements_plots(y, y_pred):
+    cm = confusion_matrix(y, y_pred)
+    display_cm = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Neg", "Pos"])
+    display_cm.plot()
+    print(classification_report(y, y_pred))
 
-    train_dataloader = DataLoader(train_data, batch_size)
-    test_dataloader = DataLoader(test_data, batch_size)
 
-    for t in range(epochs):
-        print(f"Epoch {t + 1}\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-        train(train_dataloader, model, loss_fn, optimizer)
-        test(test_dataloader, model, loss_fn)
-    print("WO-HA we're done")
+# %% preprocessing the data
+train_data, test_data, y_test = preprocess()
+
+# %% initializing parameters
+
+epochs, batch_size, learning_rate = 50, 64, 7e-3
+model = MLP().to(device)
+pos_weight_ratio = torch.ones(1) * (neg.shape[0] / pos.shape[0])
+loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight_ratio)
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+train_dataloader = DataLoader(train_data, batch_size)
+test_dataloader = DataLoader(test_data, batch_size)
+
+# %% training
+test_loss_arr, train_loss_arr = [], []
+y_pred = []
+for t in range(epochs):
+    print(f"Epoch: {t}")
+    train_iteration(train_dataloader, model, loss_fn, optimizer, train_loss_arr)
+    curr_predict = test_iteration(test_dataloader, model, loss_fn, test_loss_arr)
+    y_pred.append(curr_predict)
+
+# %% plotting train and test error
+x_range = range(epochs)
+plt.plot(x_range, test_loss_arr)
+plt.plot(x_range, train_loss_arr)
+plt.title("Train and Test error as a function of # Epochs")
+plt.xlabel("Epochs")
+plt.ylabel("Error (Arb. Units)")
+plt.legend(["Test", "Train"])
+plt.grid()
+plt.show()
+
+
+# %% for question 6
+
+def predict_peptide_from_spark(spark):
+    """
+
+    :param spark: a string that represents the 1273-amino-acid sequence
+    of the spark protein in SARS-CoV-2
+    :return:
+    """
+    peptide_len = 9
+    split_spark = [spark[i:i + 9] for i in range(0, len(spark) - (peptide_len - 1), 1)]
+    spark_df = pd.DataFrame({'seq': split_spark})
+    X_spark = generate_X(spark_df)
+    X_spark_tensor = torch.tensor(X_spark.values)
+    prediction = model(X_spark)
+    prediction = torch.round(torch.sigmoid(prediction))
+    return prediction
+
+
+# %%
+
+spark_protein = "MFVFLVLLPLVSSQCVNLTTRTQLPPAYTNSFTRGVYYPDKVFRSSVLHSTQDLFLPFFSNVTWFHAIHVSGTNGTKRFDNPVLPFNDGVYFASTEKS" \
+                "NIIRGWIFGTTLDSKTQSLLIVNNATNVVIKVCEFQFCNDPFLGVYYHKNNKSWMESEFRVYSSANNCTFEYVSQPFLMDLEGKQGNFKNLREFVFKN" \
+                "IDGYFKIYSKHTPINLVRDLPQGFSALEPLVDLPIGINITRFQTLLALHRSYLTPGDSSSGWTAGAAAYYVGYLQPRTFLLKYNENGTITDAVDCALD" \
+                "PLSETKCTLKSFTVEKGIYQTSNFRVQPTESIVRFPNITNLCPFGEVFNATRFASVYAWNRKRISNCVADYSVLYNSASFSTFKCYGVSPTKLNDLCF" \
+                "TNVYADSFVIRGDEVRQIAPGQTGKIADYNYKLPDDFTGCVIAWNSNNLDSKVGGNYNYLYRLFRKSNLKPFERDISTEIYQAGSTPCNGVEGFNCYF" \
+                "PLQSYGFQPTNGVGYQPYRVVVLSFELLHAPATVCGPKKSTNLVKNKCVNFNFNGLTGTGVLTESNKKFLPFQQFGRDIADTTDAVRDPQTLEILDIT" \
+                "PCSFGGVSVITPGTNTSNQVAVLYQDVNCTEVPVAIHADQLTPTWRVYSTGSNVFQTRAGCLIGAEHVNNSYECDIPIGAGICASYQTQTNSPRRARS" \
+                "VASQSIIAYTMSLGAENSVAYSNNSIAIPTNFTISVTTEILPVSMTKTSVDCTMYICGDSTECSNLLLQYGSFCTQLNRALTGIAVEQDKNTQEVFAQ" \
+                "VKQIYKTPPIKDFGGFNFSQILPDPSKPSKRSFIEDLLFNKVTLADAGFIKQYGDCLGDIAARDLICAQKFNGLTVLPPLLTDEMIAQYTSALLAGTI" \
+                "TSGWTFGAGAALQIPFAMQMAYRFNGIGVTQNVLYENQKLIANQFNSAIGKIQDSLSSTASALGKLQDVVNQNAQALNTLVKQLSSNFGAISSVLNDI" \
+                "LSRLDKVEAEVQIDRLITGRLQSLQTYVTQQLIRAAEIRASANLAATKMSECVLGQSKRVDFCGKGYHLMSFPQSAPHGVVFLHVTYVPAQEKNFTTA" \
+                "PAICHDGKAHFPREGVFVSNGTHWFVTQRNFYEPQIITTDNTFVSGNCDVVIGIVNNTVYDPLQPELDSFKEELDKYFKNHTSPDVDLGDISGINASV" \
+                "VNIQKEIDRLNEVAKNLNESLIDLQELGKYEQYIKWPWYIWLGFIAGLIAIVMVTIMLCCMTSCCSCLKGCCSCGSCCKFDEDDSEPVLKGVKLHYT"
+spark_pred = predict_peptide_from_spark(spark_protein)
