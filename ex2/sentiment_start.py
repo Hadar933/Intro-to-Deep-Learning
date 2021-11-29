@@ -27,8 +27,7 @@ test_interval = 50
 
 # Loading sataset, use toy = True for obtaining a smaller dataset
 
-train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size)
-x = 2
+train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size, toy=True)
 
 
 # Special matrix multipication layer (like torch.Linear but can operate on arbitrary sized
@@ -58,19 +57,21 @@ class ExRNN(nn.Module):
         super(ExRNN, self).__init__()
 
         self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.input_size = input_size
         self.sigmoid = torch.sigmoid
 
         # RNN Cell weights
-        self.in2hidden = nn.Linear(input_size + hidden_size, hidden_size)
-        # what else?
+        self.W_in_hidden = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
+        self.W_out = nn.Linear(hidden_size, output_size, bias=True)
 
     def name(self):
         return "RNN"
 
     def forward(self, x, hidden_state):
-        hidden = 0
-        # Implementation of RNN cell
-
+        concat = torch.cat((x, hidden_state), 1)
+        hidden = self.sigmoid(self.W_in_hidden(concat))
+        output = self.sigmoid(self.W_out(hidden_state))
         return output, hidden
 
     def init_hidden(self, bs):
