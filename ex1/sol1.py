@@ -8,6 +8,7 @@ from sklearn.metrics import confusion_matrix, classification_report, ConfusionMa
 import torch.utils.data as data_utils
 import matplotlib.pyplot as plt
 
+# global variables:
 device = "cuda" if torch.cuda.is_available() else "cpu"
 neg = pd.read_csv('Data/neg_A0201.txt', names=['seq'])
 pos = pd.read_csv('Data/pos_A0201.txt', names=['seq'])
@@ -17,7 +18,7 @@ one_hot_values = [str(i) + acid for i in range(9) for acid in amino_letters]  # 
 
 def generate_X(peptid_df):
     """
-    generates a sample matrix with all the relevant dummy variables from the given peptid dataframe
+    generates a sample matrix with all the relevant dummy variables from the given peptide dataframe
     :param peptid_df: a dataframe with the peptids
     :return: altered df
     """
@@ -26,13 +27,13 @@ def generate_X(peptid_df):
         peptid_one_hot = [str(i) + acid for i, acid in enumerate(peptid_name)]  # columns that should be assigned 1
         peptid_df.at[i, peptid_one_hot] = 1
         if i % 100 == 0:
-            print(f"prepcocessing: completed {i}")
+            print(f"pre-processing: completed {i}")
     return peptid_df.drop(["seq"], axis=1)
 
 
 def preprocess():
     """
-    :return: training and test X,y
+    :return: train and test X,y
     """
     X_pos, X_neg = generate_X(pos), generate_X(neg)
     y_pos, y_neg = np.ones(X_pos.shape[0]), np.zeros(X_neg.shape[0])
@@ -51,13 +52,15 @@ def preprocess():
 
 class MLP(nn.Module):
     """
-      Multilayer Perceptron.
+    Multilayer Perceptron.
     """
 
     def __init__(self):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(180, 360),
+            nn.ReLU(),
+            nn.Linear(360, 360),
             nn.ReLU(),
             nn.Linear(360, 100),
             nn.ReLU(),
@@ -80,9 +83,6 @@ def accuracy(y_pred, y_true):
     rounded_y_pred = torch.round(torch.sigmoid(y_pred))
     agree = (y_true == rounded_y_pred).sum()
     return 100 * agree.float() / y_true.shape[0]
-
-
-"""#4. Train & Test methods"""
 
 
 def train_iteration(dataloader, model, loss_fn, optimizer, train_loss_arr):
@@ -117,7 +117,7 @@ def test_iteration(dataloader, model, loss_fn, test_loss_arr):
     """
     size = len(dataloader.dataset)
     all_predictions = []
-    model.eval()  # tell pyTorch we do not use backprop
+    model.eval()  # tell pyTorch we do not use back-prop
 
     epoch_loss = 0
     with torch.no_grad():
@@ -138,10 +138,16 @@ def test_iteration(dataloader, model, loss_fn, test_loss_arr):
 
 
 def measurements_plots(y, y_pred):
+    """
+    plots a confusion matrix, and prints relevant classification reports
+    :param y: true labels
+    :param y_pred: predicted labels
+    """
     cm = confusion_matrix(y, y_pred)
     display_cm = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Neg", "Pos"])
     display_cm.plot()
     plt.title("confusion matrix")
+    plt.savefig("confusion_mat_fig.png", format='png')
     plt.show()
     print(classification_report(y, y_pred))
 
@@ -172,11 +178,12 @@ for t in range(epochs):
 # %% plotting train and test error
 plt.plot(test_loss_arr)
 plt.plot(train_loss_arr)
-plt.title("Train and Test error as a function of # Epochs")
+plt.title(f"Train\Test error (epochs={epochs}, batch size={batch_size}, learning rate={learning_rate})")
 plt.xlabel("Epochs")
 plt.ylabel("Error (Arb. Units)")
 plt.legend(["Test", "Train"])
 plt.grid()
+plt.savefig("test_train_loss_fig.png", format='png')
 plt.show()
 
 # %%
@@ -224,6 +231,11 @@ print(f"top five peptides: {predict_peptide_from_spark(spark)}")
 
 # %%
 def optimize_sequence(model):
+    """
+    find the best fitting peptide, when initialized as a random input
+    :param model:
+    :return:
+    """
     x = torch.randn((1, 180), device=device, dtype=torch.float, requires_grad=True)
     loss_arr = []
     optimizer = torch.optim.SGD([x], lr=learning_rate)
@@ -256,4 +268,16 @@ plt.title(f"Optimizing sequence loss (result peptide: {peptide})")
 plt.xlabel("Iterations")
 plt.ylabel("Error (Arb. units")
 plt.grid()
+plt.savefig("optimize_seq_plot.png", format='png')
 plt.show()
+
+
+# %%
+def shift(s):
+    first_s = s
+    while s != first_s:
+        s0 = s[0]
+        s = s[1:]
+        s = s + s0
+        print(s)
+
