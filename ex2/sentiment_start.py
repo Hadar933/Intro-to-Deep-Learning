@@ -22,12 +22,12 @@ atten_size = 0  # atten > 0 means using restricted self atten
 
 reload_model = False
 num_epochs = 10
-learning_rate = 0.001
+learning_rate = 0.01
 test_interval = 50
 
 # Loading sataset, use toy = True for obtaining a smaller dataset
 
-train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size, toy=True)
+train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size)
 
 
 # Special matrix multipication layer (like torch.Linear but can operate on arbitrary sized
@@ -71,7 +71,7 @@ class ExRNN(nn.Module):
     def forward(self, x, hidden_state):
         concat = torch.cat((x, hidden_state), 1)
         hidden = self.sigmoid(self.W_in_hidden.forward(concat))
-        hidden = torch.squeeze(hidden)
+        hidden = torch.squeeze(hidden)  # removes first dimension (of 1)
         output = self.sigmoid(self.W_out.forward(hidden_state))
         output = torch.squeeze(output)
         return output, hidden
