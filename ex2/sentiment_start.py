@@ -6,21 +6,19 @@
 ########################################################################
 ########################################################################
 
-import torch as tr
 import torch
 from torch.nn.functional import pad
 import torch.nn as nn
 import numpy as np
 import loader as ld
 
-
 batch_size = 32
 output_size = 2
-hidden_size = 64        # to experiment with
+hidden_size = 64  # to experiment with
 
-run_recurrent = False    # else run Token-wise MLP
-use_RNN = True          # otherwise GRU
-atten_size = 0          # atten > 0 means using restricted self atten
+run_recurrent = False  # else run Token-wise MLP
+use_RNN = True  # otherwise GRU
+atten_size = 0  # atten > 0 means using restricted self atten
 
 reload_model = False
 num_epochs = 10
@@ -30,25 +28,29 @@ test_interval = 50
 # Loading sataset, use toy = True for obtaining a smaller dataset
 
 train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size)
+x = 2
+
 
 # Special matrix multipication layer (like torch.Linear but can operate on arbitrary sized
 # tensors and considers its last two indices as the matrix.)
 
 class MatMul(nn.Module):
-    def __init__(self, in_channels, out_channels, use_bias = True):
+    def __init__(self, in_channels, out_channels, use_bias=True):
         super(MatMul, self).__init__()
-        self.matrix = torch.nn.Parameter(torch.nn.init.xavier_normal_(torch.empty(in_channels,out_channels)), requires_grad=True)
+        self.matrix = torch.nn.Parameter(torch.nn.init.xavier_normal_(torch.empty(in_channels, out_channels)),
+                                         requires_grad=True)
         if use_bias:
-            self.bias = torch.nn.Parameter(torch.zeros(1,1,out_channels), requires_grad=True)
+            self.bias = torch.nn.Parameter(torch.zeros(1, 1, out_channels), requires_grad=True)
 
         self.use_bias = use_bias
 
-    def forward(self, x):        
-        x = torch.matmul(x,self.matrix) 
+    def forward(self, x):
+        x = torch.matmul(x, self.matrix)
         if self.use_bias:
-            x = x+ self.bias 
+            x = x + self.bias
         return x
-        
+
+
 # Implements RNN Unit
 
 class ExRNN(nn.Module):
@@ -66,13 +68,14 @@ class ExRNN(nn.Module):
         return "RNN"
 
     def forward(self, x, hidden_state):
-
+        hidden = 0
         # Implementation of RNN cell
-        
+
         return output, hidden
 
     def init_hidden(self, bs):
         return torch.zeros(bs, self.hidden_size)
+
 
 # Implements GRU Unit
 
@@ -88,7 +91,7 @@ class ExGRU(nn.Module):
         return "GRU"
 
     def forward(self, x, hidden_state):
-
+        hidden = 0
         # Implementation of GRU cell
 
         # missing implementation
@@ -96,6 +99,7 @@ class ExGRU(nn.Module):
         return output, hidden
 
     def init_hidden(self):
+        bs = 0
         return torch.zeros(bs, self.hidden_size)
 
 
@@ -106,17 +110,15 @@ class ExMLP(nn.Module):
         self.ReLU = torch.nn.ReLU()
 
         # Token-wise MLP network weights
-        self.layer1 = MatMul(input_size,hidden_size)
+        self.layer1 = MatMul(input_size, hidden_size)
         # additional layer(s)
-        
 
     def name(self):
         return "MLP"
 
     def forward(self, x):
-
         # Token-wise MLP network implementation
-        
+
         x = self.layer1(x)
         x = self.ReLU(x)
         # rest
@@ -126,26 +128,24 @@ class ExMLP(nn.Module):
 
 class ExLRestSelfAtten(nn.Module):
     def __init__(self, input_size, output_size, hidden_size):
-        super(ExRestSelfAtten, self).__init__()
+        super(ExLRestSelfAtten, self).__init__()
 
         self.input_size = input_size
         self.output_size = output_size
         self.sqrt_hidden_size = np.sqrt(float(hidden_size))
         self.ReLU = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(2)
-        
+
         # Token-wise MLP + Restricted Attention network implementation
 
-        self.layer1 = MatMul(input_size,hidden_size)
+        self.layer1 = MatMul(input_size, hidden_size)
         self.W_q = MatMul(hidden_size, hidden_size, use_bias=False)
         # rest ...
-
 
     def name(self):
         return "MLP_atten"
 
     def forward(self, x):
-
         # Token-wise MLP + Restricted Attention network implementation
 
         x = self.layer1(x)
@@ -154,15 +154,15 @@ class ExLRestSelfAtten(nn.Module):
         # generating x in offsets between -atten_size and atten_size 
         # with zero padding at the ends
 
-        padded = pad(x,(0,0,atten_size,atten_size,0,0))
+        padded = pad(x, (0, 0, atten_size, atten_size, 0, 0))
 
         x_nei = []
-        for k in range(-atten_size,atten_size+1):
+        for k in range(-atten_size, atten_size + 1):
             x_nei.append(torch.roll(padded, k, 1))
 
-        x_nei = torch.stack(x_nei,2)
-        x_nei = x_nei[:,atten_size:-atten_size,:]
-        
+        x_nei = torch.stack(x_nei, 2)
+        x_nei = x_nei[:, atten_size:-atten_size, :]
+
         # x_nei has an additional axis that corresponds to the offset
 
         # Applying attention layer
@@ -171,7 +171,6 @@ class ExLRestSelfAtten(nn.Module):
         # keys = ...
         # vals = ...
 
-
         return x, atten_weights
 
 
@@ -179,8 +178,9 @@ class ExLRestSelfAtten(nn.Module):
 # prints also the final scores, the softmaxed prediction values and the true label values
 
 def print_review(rev_text, sbs1, sbs2, lbl1, lbl2):
-            
     # implement
+    pass
+
 
 # select model to use
 
@@ -191,7 +191,7 @@ if run_recurrent:
         model = ExGRU(input_size, output_size, hidden_size)
 else:
     if atten_size > 0:
-        model = ExRestSelfAtten(input_size, output_size, hidden_size)
+        model = ExLRestSelfAtten(input_size, output_size, hidden_size)
     else:
         model = ExMLP(input_size, output_size, hidden_size)
 
@@ -211,15 +211,15 @@ test_loss = 1.0
 
 for epoch in range(num_epochs):
 
-    itr = 0 # iteration counter within each epoch
+    itr = 0  # iteration counter within each epoch
 
-    for labels, reviews, reviews_text in train_dataset:   # getting training batches
+    for labels, reviews, reviews_text in train_dataset:  # getting training batches
 
         itr = itr + 1
 
         if (itr + 1) % test_interval == 0:
             test_iter = True
-            labels, reviews, reviews_text = next(iter(test_dataset)) # get a test batch 
+            labels, reviews, reviews_text = next(iter(test_dataset))  # get a test batch
         else:
             test_iter = False
 
@@ -229,22 +229,22 @@ for epoch in range(num_epochs):
             hidden_state = model.init_hidden(int(labels.shape[0]))
 
             for i in range(num_words):
-                output, hidden_state = model(reviews[:,i,:], hidden_state)  # HIDE
+                output, hidden_state = model(reviews[:, i, :], hidden_state)  # HIDE
 
-        else:  
+        else:
 
-        # Token-wise networks (MLP / MLP + Atten.) 
-        
+            # Token-wise networks (MLP / MLP + Atten.)
+
             sub_score = []
-            if atten_size > 0:  
+            if atten_size > 0:
                 # MLP + atten
                 sub_score, atten_weights = model(reviews)
-            else:               
+            else:
                 # MLP
                 sub_score = model(reviews)
 
             output = torch.mean(sub_score, 1)
-            
+
         # cross-entropy loss
 
         loss = criterion(output, labels)
@@ -273,7 +273,7 @@ for epoch in range(num_epochs):
             if not run_recurrent:
                 nump_subs = sub_score.detach().numpy()
                 labels = labels.detach().numpy()
-                print_review(reviews_text[0], nump_subs[0,:,0], nump_subs[0,:,1], labels[0,0], labels[0,1])
+                print_review(reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0], labels[0, 1])
 
             # saving the model
             torch.save(model, model.name() + ".pth")
