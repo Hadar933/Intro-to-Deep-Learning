@@ -62,16 +62,18 @@ class ExRNN(nn.Module):
         self.sigmoid = torch.sigmoid
 
         # RNN Cell weights
-        self.W_in_hidden = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
-        self.W_out = nn.Linear(hidden_size, output_size, bias=True)
+        self.W_in_hidden = MatMul(input_size + hidden_size, hidden_size)
+        self.W_out = MatMul(hidden_size, output_size)
 
     def name(self):
         return "RNN"
 
     def forward(self, x, hidden_state):
-        concat = torch.cat((hidden_state, x), 1)
-        hidden = self.sigmoid(self.W_in_hidden(concat))
-        output = self.sigmoid(self.W_out(hidden_state))
+        concat = torch.cat((x, hidden_state), 1)
+        hidden = self.sigmoid(self.W_in_hidden.forward(concat))
+        hidden = torch.squeeze(hidden)
+        output = self.sigmoid(self.W_out.forward(hidden_state))
+        output = torch.squeeze(output)
         return output, hidden
 
     def init_hidden(self, bs):
@@ -189,7 +191,6 @@ class ExLRestSelfAtten(nn.Module):
 
 def print_review(rev_text, sbs1, sbs2, lbl1, lbl2):
     # implement
-    to_tifat = 1
     pass
 
 
@@ -288,4 +289,4 @@ if __name__ == '__main__':
                     print_review(reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0], labels[0, 1])
 
                 # saving the model
-                torch.save(model, model.name() + ".pth")
+                # torch.save(model, model.name() + ".pth")
