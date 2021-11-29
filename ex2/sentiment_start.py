@@ -16,7 +16,7 @@ batch_size = 32
 output_size = 2
 hidden_size = 64  # to experiment with
 
-run_recurrent = False  # else run Token-wise MLP
+run_recurrent = True  # else run Token-wise MLP
 use_RNN = True  # otherwise GRU
 atten_size = 0  # atten > 0 means using restricted self atten
 
@@ -94,6 +94,8 @@ class ExGRU(nn.Module):
 
         # GRU Cell weights
         self.W_z = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
+        self.W_r = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
+        self.W_h = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
 
     def name(self):
         return "GRU"
