@@ -179,6 +179,7 @@ class ExLRestSelfAtten(nn.Module):
 
 def print_review(rev_text, sbs1, sbs2, lbl1, lbl2):
     # implement
+    to_tifat = 1
     pass
 
 
