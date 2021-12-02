@@ -16,8 +16,8 @@ batch_size = 32
 output_size = 2
 hidden_size = 64  # to experiment with
 
-run_recurrent = True  # else run Token-wise MLP
-use_RNN = True  # otherwise GRU
+run_recurrent = False  # else run Token-wise MLP
+use_RNN = False  # otherwise GRU
 atten_size = 0  # atten > 0 means using restricted self atten
 
 reload_model = False
@@ -96,7 +96,7 @@ class ExGRU(nn.Module):
         self.W_z = nn.Linear(input_size + hidden_size, hidden_size)
         self.W_r = nn.Linear(input_size + hidden_size, hidden_size)
         self.W_h = nn.Linear(input_size + hidden_size, hidden_size)
-        self.fully_connected = nn.Linear(hidden_size,output_size)
+        self.fully_connected = nn.Linear(hidden_size, output_size)
 
     def name(self):
         return "GRU"
@@ -123,6 +123,7 @@ class ExMLP(nn.Module):
 
         # Token-wise MLP network weights
         self.layer1 = MatMul(input_size, hidden_size)
+        self.layer2 = MatMul(hidden_size, output_size)
         # additional layer(s)
 
     def name(self):
@@ -133,8 +134,8 @@ class ExMLP(nn.Module):
 
         x = self.layer1(x)
         x = self.ReLU(x)
-        # rest
-
+        x = self.layer2(x)
+        x = torch.sigmoid(x)
         return x
 
 
