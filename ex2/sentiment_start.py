@@ -18,7 +18,7 @@ hidden_size = 64  # to experiment with
 
 run_recurrent = False  # else run Token-wise MLP
 use_RNN = False  # otherwise GRU
-atten_size = 0  # atten > 0 means using restricted self atten
+atten_size = 5  # atten > 0 means using restricted self atten
 
 reload_model = False
 num_epochs = 10
@@ -124,7 +124,6 @@ class ExMLP(nn.Module):
         # Token-wise MLP network weights
         self.layer1 = MatMul(input_size, hidden_size)
         self.layer2 = MatMul(hidden_size, output_size)
-        # additional layer(s)
 
     def name(self):
         return "MLP"
@@ -152,8 +151,11 @@ class ExLRestSelfAtten(nn.Module):
         # Token-wise MLP + Restricted Attention network implementation
 
         self.layer1 = MatMul(input_size, hidden_size)
+        self.layer2 = MatMul(hidden_size, output_size)
+
         self.W_q = MatMul(hidden_size, hidden_size, use_bias=False)
-        # rest ...
+        self.W_k = MatMul(hidden_size, hidden_size, use_bias=False)
+        self.W_v = MatMul(hidden_size, hidden_size, use_bias=False)
 
     def name(self):
         return "MLP_atten"
@@ -177,13 +179,19 @@ class ExLRestSelfAtten(nn.Module):
         x_nei = x_nei[:, atten_size:-atten_size, :]
 
         # x_nei has an additional axis that corresponds to the offset
+        query = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
+        keys = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
+        values = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
 
-        # Applying attention layer
+        # # Applying attention layer
+        for batch in range(batch_size):
+            for shift in range(2 * atten_size + 1):
+                query[batch, :, shift, :] = self.W_q.forward(x_nei[batch, :, shift, :])
+                keys[batch, :, shift, :] = self.W_k.forward(x_nei[batch, :, shift, :])
+                values[batch, :, shift, :] = self.W_v.forward(x_nei[batch, :, shift, :])
 
-        # query = ...
-        # keys = ...
-        # vals = ...
-
+        att = lambda V, K, Q: self.softmax(Q @ K.T) @ V / self.sqrt_hidden_size
+        x = att()
         return x, atten_weights
 
 
