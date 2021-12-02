@@ -62,23 +62,21 @@ class ExRNN(nn.Module):
         self.sigmoid = torch.sigmoid
 
         # RNN Cell weights
-        self.W_in_hidden = MatMul(input_size + hidden_size, hidden_size)
-        self.W_out = MatMul(hidden_size, output_size)
+        self.W_in_hidden = nn.Linear(input_size + hidden_size, hidden_size)
+        self.W_out = nn.Linear(hidden_size, output_size)
 
     def name(self):
         return "RNN"
 
     def forward(self, x, hidden_state):
         concat = torch.cat((x, hidden_state), 1)
-        hidden = self.sigmoid(self.W_in_hidden.forward(concat))
-        hidden = torch.squeeze(hidden)  # removes first dimension (of 1)
-        output = self.sigmoid(self.W_out.forward(hidden_state))
-        output = torch.squeeze(output)
+        hidden = torch.tanh(self.W_in_hidden(concat))
+        output = self.sigmoid(self.W_out(hidden))
         return output, hidden
 
     def init_hidden(self, bs):
         """
-        :param bs: batch size
+        :param bs: batch siz78e
         :return:
         """
         return torch.zeros(bs, self.hidden_size)
@@ -95,21 +93,23 @@ class ExGRU(nn.Module):
         self.sigmoid = torch.sigmoid
 
         # GRU Cell weights
-        self.W_z = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
-        self.W_r = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
-        self.W_h = nn.Linear(input_size + hidden_size, hidden_size, bias=True)
+        self.W_z = nn.Linear(input_size + hidden_size, hidden_size)
+        self.W_r = nn.Linear(input_size + hidden_size, hidden_size)
+        self.W_h = nn.Linear(input_size + hidden_size, hidden_size)
+        self.fully_connected = nn.Linear(hidden_size,output_size)
 
     def name(self):
         return "GRU"
 
     def forward(self, x, hidden_state):
         concat1 = torch.cat((hidden_state, x), 1)
-        z = self.sigmoid(self.W_z(concat1))
-        r = self.sigmoid(self.W_r(concat1))
+        z = self.sigmoid(self.W_z.forward(concat1))
+        r = self.sigmoid(self.W_r.forward(concat1))
         concat2 = torch.cat((r * hidden_state, x), 1)
-        h_tilde = torch.tanh(self.W_h(concat2))
+        h_tilde = torch.tanh(self.W_h.forward(concat2))
         hidden = (1 - z) * hidden_state + z * h_tilde
-        return hidden, hidden  # TODO: does output = hidden ?
+        output = torch.sigmoid(self.fully_connected(hidden))
+        return output, hidden
 
     def init_hidden(self, bs):
         return torch.zeros(bs, self.hidden_size)
