@@ -139,14 +139,14 @@ class ExMLP(nn.Module):
 
 
 class ExLRestSelfAtten(nn.Module):
-    def __init__(self, input_size, output_size, hidden_size):
+    def __init__(self, input_size, output_size, hiddenf_size):
         super(ExLRestSelfAtten, self).__init__()
 
         self.input_size = input_size
         self.output_size = output_size
         self.sqrt_hidden_size = np.sqrt(float(hidden_size))
         self.ReLU = torch.nn.ReLU()
-        self.softmax = torch.nn.Softmax(2)
+        self.softmax = torch.nn.Softmax(1)
 
         # Token-wise MLP + Restricted Attention network implementation
 
@@ -172,8 +172,8 @@ class ExLRestSelfAtten(nn.Module):
         padded = pad(x, (0, 0, atten_size, atten_size, 0, 0))
 
         x_nei = []
-        for k in range(-atten_size, atten_size + 1):
-            x_nei.append(torch.roll(padded, k, 1))
+        for k_T in range(-atten_size, atten_size + 1):
+            x_nei.append(torch.roll(padded, k_T, 1))
 
         x_nei = torch.stack(x_nei, 2)
         x_nei = x_nei[:, atten_size:-atten_size, :]
@@ -184,14 +184,19 @@ class ExLRestSelfAtten(nn.Module):
         values = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
 
         # # Applying attention layer
+
         for batch in range(batch_size):
             for shift in range(2 * atten_size + 1):
                 query[batch, :, shift, :] = self.W_q.forward(x_nei[batch, :, shift, :])
                 keys[batch, :, shift, :] = self.W_k.forward(x_nei[batch, :, shift, :])
                 values[batch, :, shift, :] = self.W_v.forward(x_nei[batch, :, shift, :])
 
-        att = lambda V, K, Q: self.softmax(Q @ K.T) @ V / self.sqrt_hidden_size
-        x = att()
+        atten_weights = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
+        keys_transpose = torch.transpose(keys, dim0=1, dim1=3)
+        for batch in range(batch_size):
+            for shift in range(2 * atten_size + 1):
+                q, k_T, v = query[batch, :, shift, :], keys_transpose[batch, :, shift, :], values[batch, :, shift, :]
+        val = 2
         return x, atten_weights
 
 
