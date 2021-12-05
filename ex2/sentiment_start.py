@@ -201,107 +201,97 @@ class ExLRestSelfAtten(nn.Module):
         return x, atten_weights
 
 
-# prints portion of the review (20-30 first words), with the sub-scores each work obtained
-# prints also the final scores, the softmaxed prediction values and the true label values
-
 def print_review(rev_text, sbs1, sbs2, lbl1, lbl2):
-    # implement
+    """
+    prints portion of the review (20-30 first words), with the sub-scores each work obtained
+    prints also the final scores, the softmaxed prediction values and the true label values
+    """
+    # TODO: implement
     pass
+
+
+def accuracy(y_pred, y_true):
+    """
+    calculates the accuracy given a prediction and true labels
+    """
+    rounded_y_pred = torch.round(torch.sigmoid(y_pred))
+    agree = (y_true == rounded_y_pred).sum()
+    return 100 * agree.float() / y_true.shape[0]
+
+
+def choose_model():
+    """
+    chooses model given 4 optional implementation
+    :return: chosen model instance
+    """
+    if run_recurrent:
+        if use_RNN:
+            chosen_model = ExRNN(input_size, output_size, hidden_size)
+        else:
+            chosen_model = ExGRU(input_size, output_size, hidden_size)
+    else:
+        if atten_size > 0:
+            chosen_model = ExLRestSelfAtten(input_size, output_size, hidden_size)
+        else:
+            chosen_model = ExMLP(input_size, output_size, hidden_size)
+    print("Using model: " + chosen_model.name())
+    return chosen_model
 
 
 if __name__ == '__main__':
     # select model to use
-
-    if run_recurrent:
-        if use_RNN:
-            model = ExRNN(input_size, output_size, hidden_size)
-        else:
-            model = ExGRU(input_size, output_size, hidden_size)
-    else:
-        if atten_size > 0:
-            model = ExLRestSelfAtten(input_size, output_size, hidden_size)
-        else:
-            model = ExMLP(input_size, output_size, hidden_size)
-
-    print("Using model: " + model.name())
-
+    model = choose_model()
     if reload_model:
         print("Reloading model")
         model.load_state_dict(torch.load(model.name() + ".pth"))
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
     train_loss = 1.0
     test_loss = 1.0
-
     # training steps in which a test step is executed every test_interval
-
     for epoch in range(num_epochs):
-
         itr = 0  # iteration counter within each epoch
-
         for labels, reviews, reviews_text in train_dataset:  # getting training batches
-
             itr = itr + 1
-
             if (itr + 1) % test_interval == 0:
                 test_iter = True
                 labels, reviews, reviews_text = next(iter(test_dataset))  # get a test batch
             else:
                 test_iter = False
-
             # Recurrent nets (RNN/GRU)
-
             if run_recurrent:
                 hidden_state = model.init_hidden(int(labels.shape[0]))
-
                 for i in range(num_words):
                     output, hidden_state = model(reviews[:, i, :], hidden_state)  # HIDE
-
-            else:
-
-                # Token-wise networks (MLP / MLP + Atten.)
-
+            else:  # Token-wise networks (MLP / MLP + Atten.)
                 # sub_score = []
-                if atten_size > 0:
-                    # MLP + atten
+                if atten_size > 0:  # MLP + atten
                     sub_score, atten_weights = model(reviews)
-                else:
-                    # MLP
+                else:  # MLP
                     sub_score = model(reviews)
-
                 output = torch.mean(sub_score, 1)
 
-            # cross-entropy loss
-
-            loss = criterion(output, labels)
-
+            loss = criterion(output, labels)  # cross-entropy loss
             # optimize in training iterations
-
             if not test_iter:
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-
             # averaged losses
             if test_iter:
                 test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
             else:
                 train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
-
             if test_iter:
                 print(
                     f"Epoch [{epoch + 1}/{num_epochs}], "
                     f"Step [{itr + 1}/{len(train_dataset)}], "
                     f"Train Loss: {train_loss:.4f}, "
-                    f"Test Loss: {test_loss:.4f}"
-                )
-
+                    f"Test Loss: {test_loss:.4f}")
                 if not run_recurrent:
                     nump_subs = sub_score.detach().numpy()
                     labels = labels.detach().numpy()
                     print_review(reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0], labels[0, 1])
-
                 # saving the model
                 # torch.save(model, model.name() + ".pth")
