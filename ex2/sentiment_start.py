@@ -234,40 +234,14 @@ def choose_model():
     return chosen_model
 
 
-def train_iteration(loss_arr):
-    print("Training")
-    train_loss, output, progress = 0, 0, 0
-    train_size = len(train_dataset)
-
-    for labels, reviews, reviews_text in train_dataset:  # getting training batches
-        optimizer.zero_grad()
-        loss, output = perform_step(labels, output, reviews)
-        loss.backward()
-        optimizer.step()
-        train_loss += loss.item()
-        if progress % 10 == 0: print(f"progress [{progress}/{train_size}]", end="\r")
-        progress += 1
-    loss_arr.append(train_loss / train_size)
-    print(f"Train Loss: {train_loss / train_size:.2f}, "
-          f"Accuracy: {accuracy(output, labels)}")
-
-
-def test_iteration(loss_arr):
-    print("Testing")
-    test_loss, output, progress = 0, 0, 0
-    test_size = len(test_dataset)
-    with torch.no_grad():
-        for labels, reviews, reviews_text in train_dataset:
-            loss, output = perform_step(labels, output, reviews)
-            test_loss += loss.item()
-            if progress % 10 == 0: print(f"progress [{progress}/{test_size}]", end="\r")
-            progress += 1
-        loss_arr.append(test_loss / test_size)
-        print(f"Test Loss: {test_loss / test_size:.2f}, "
-              f"Accuracy: {accuracy(output, labels)}")
-
-
 def perform_step(labels, output, reviews):
+    """
+    this function provides an output based on the chosen model
+    :param labels: the labels associated to every review
+    :param output: the previous output
+    :param reviews: vectors of reviews
+    :return: a loss and an output
+    """
     if run_recurrent:  # Recurrent nets (RNN/GRU)
         hidden_state = model.init_hidden(int(labels.shape[0]))
         for i in range(num_words):
@@ -293,9 +267,10 @@ if reload_model:
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-train_loss, test_loss = 1.0, 1.0
-train_accuracy_arr, test_accuracy_arr, train_loss_arr, test_loss_arr = [], [], [], []
-train_output, test_output = 0, 0
+curr_train_loss, curr_test_loss = 1.0, 1.0
+train_accuracy_arr, test_accuracy_arr = [], []
+train_loss_arr, test_loss_arr = [], []
+train_output, test_output = 0, 0  # just as initialization
 train_size, test_size = len(train_dataset), len(test_dataset)
 # %% train/test process
 
@@ -312,19 +287,19 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
-        train_loss_arr.append(train_loss)
-        train_epoch_acc += accuracy(train_output, train_labels)
+        curr_train_loss = 0.9 * float(loss.detach()) + 0.1 * curr_train_loss
+        train_loss_arr.append(curr_train_loss)
+        train_epoch_acc += accuracy(train_output, train_labels)  # summing to finally average
 
-    train_epoch_acc /= train_size
+    train_epoch_acc /= train_size  # normalizing to achieve average
     train_accuracy_arr.append(train_epoch_acc)
 
     for test_labels, test_reviews, test_reviews_text in test_dataset:
         test_progress += 1
         if test_progress % 100 == 0: print(f"Test Progress: [{test_progress}/{test_size}]", end="\r")
         loss, test_output = perform_step(test_labels, test_output, test_reviews)
-        test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
-        test_loss_arr.append(test_loss)
+        curr_test_loss = 0.8 * float(loss.detach()) + 0.2 * curr_test_loss
+        test_loss_arr.append(curr_test_loss)
         test_epoch_acc += accuracy(test_output, test_labels)
 
         # if not run_recurrent:
@@ -337,8 +312,8 @@ for epoch in range(num_epochs):
     test_accuracy_arr.append(test_epoch_acc)
 
     print(
-        f"Train Loss: {train_loss:.4f}, "
-        f"Test Loss: {test_loss:.4f}, "
+        f"Train Loss: {curr_train_loss:.4f}, "
+        f"Test Loss: {curr_test_loss:.4f}, "
         f"Test Accuracy: {test_epoch_acc:.4f}"
     )
 
