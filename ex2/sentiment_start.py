@@ -1,4 +1,5 @@
 import torch
+from matplotlib import pyplot as plt
 from torch.nn.functional import pad
 import torch.nn as nn
 import numpy as np
@@ -8,14 +9,13 @@ batch_size = 32
 output_size = 2
 hidden_size = 64  # to experiment with
 
-run_recurrent = False  # else run Token-wise MLP
+run_recurrent = True  # else run Token-wise MLP
 use_RNN = False  # otherwise GRU
 atten_size = 0  # atten > 0 means using restricted self atten
 
 reload_model = False
 num_epochs = 10
 learning_rate = 0.01
-test_interval = 50
 
 train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size)
 
@@ -301,7 +301,7 @@ train_size, test_size = len(train_dataset), len(test_dataset)
 
 for epoch in range(num_epochs):
     train_progress, test_progress = 0, 0
-    train_epoch_acc,test_epoch_acc = 0,0
+    train_epoch_acc, test_epoch_acc = 0, 0
 
     print(f"Epoch [{epoch + 1}/{num_epochs}]")
 
@@ -341,3 +341,11 @@ for epoch in range(num_epochs):
         f"Test Loss: {test_loss:.4f}, "
         f"Test Accuracy: {test_epoch_acc:.4f}"
     )
+
+# %% plotting
+plt.plot(test_accuracy_arr)
+plt.title(f"Test accuracy [{model.name()}]")
+plt.xlabel("Iterations")
+plt.ylabel("Accuracy")
+plt.grid()
+plt.show()
