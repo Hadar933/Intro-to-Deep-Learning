@@ -1,6 +1,6 @@
 # Intro to Deep Learning
 ## summary
-check out my lecture notes
+check out my lecture notes,  `IDL_notes`
 
 ## Exercises
 * ex1 - implementing **MLP** to identify peptides from the Spike protein of the SARS-CoV-2 virus
