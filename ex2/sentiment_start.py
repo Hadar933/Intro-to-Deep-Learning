@@ -1,11 +1,3 @@
-########################################################################
-########################################################################
-##                                                                    ##
-##                      ORIGINAL _ DO NOT PUBLISH                     ##
-##                                                                    ##
-########################################################################
-########################################################################
-
 import torch
 from torch.nn.functional import pad
 import torch.nn as nn
@@ -18,22 +10,22 @@ hidden_size = 64  # to experiment with
 
 run_recurrent = False  # else run Token-wise MLP
 use_RNN = False  # otherwise GRU
-atten_size = 5  # atten > 0 means using restricted self atten
+atten_size = 0  # atten > 0 means using restricted self atten
 
 reload_model = False
 num_epochs = 10
 learning_rate = 0.01
 test_interval = 50
 
-# Loading sataset, use toy = True for obtaining a smaller dataset
-
 train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size)
 
 
-# Special matrix multipication layer (like torch.Linear but can operate on arbitrary sized
-# tensors and considers its last two indices as the matrix.)
-
 class MatMul(nn.Module):
+    """
+    Special matrix multipication layer (like torch.Linear but can operate on arbitrary sized
+    tensors and considers its last two indices as the matrix.)
+    """
+
     def __init__(self, in_channels, out_channels, use_bias=True):
         super(MatMul, self).__init__()
         self.matrix = torch.nn.Parameter(torch.nn.init.xavier_normal_(torch.empty(in_channels, out_channels)),
@@ -214,9 +206,13 @@ def accuracy(y_pred, y_true):
     """
     calculates the accuracy given a prediction and true labels
     """
-    rounded_y_pred = torch.round(torch.sigmoid(y_pred))
-    agree = (y_true == rounded_y_pred).sum()
-    return 100 * agree.float() / y_true.shape[0]
+    size = y_true.shape[0]
+    y_pred = torch.softmax(y_pred, dim=1)
+    rounded_y_pred = torch.round(y_pred)
+    agree = y_true == rounded_y_pred
+    val = sum([1 for i in range(size) if agree[i][0] == agree[i][1] == True])
+    percentage = 100 * float(val) / size
+    return percentage
 
 
 def choose_model():
@@ -238,60 +234,110 @@ def choose_model():
     return chosen_model
 
 
-if __name__ == '__main__':
-    # select model to use
-    model = choose_model()
-    if reload_model:
-        print("Reloading model")
-        model.load_state_dict(torch.load(model.name() + ".pth"))
+def train_iteration(loss_arr):
+    print("Training")
+    train_loss, output, progress = 0, 0, 0
+    train_size = len(train_dataset)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    train_loss = 1.0
-    test_loss = 1.0
-    # training steps in which a test step is executed every test_interval
-    for epoch in range(num_epochs):
-        itr = 0  # iteration counter within each epoch
-        for labels, reviews, reviews_text in train_dataset:  # getting training batches
-            itr = itr + 1
-            if (itr + 1) % test_interval == 0:
-                test_iter = True
-                labels, reviews, reviews_text = next(iter(test_dataset))  # get a test batch
-            else:
-                test_iter = False
-            # Recurrent nets (RNN/GRU)
-            if run_recurrent:
-                hidden_state = model.init_hidden(int(labels.shape[0]))
-                for i in range(num_words):
-                    output, hidden_state = model(reviews[:, i, :], hidden_state)  # HIDE
-            else:  # Token-wise networks (MLP / MLP + Atten.)
-                # sub_score = []
-                if atten_size > 0:  # MLP + atten
-                    sub_score, atten_weights = model(reviews)
-                else:  # MLP
-                    sub_score = model(reviews)
-                output = torch.mean(sub_score, 1)
+    for labels, reviews, reviews_text in train_dataset:  # getting training batches
+        optimizer.zero_grad()
+        loss, output = perform_step(labels, output, reviews)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item()
+        if progress % 10 == 0: print(f"progress [{progress}/{train_size}]", end="\r")
+        progress += 1
+    loss_arr.append(train_loss / train_size)
+    print(f"Train Loss: {train_loss / train_size:.2f}, "
+          f"Accuracy: {accuracy(output, labels)}")
 
-            loss = criterion(output, labels)  # cross-entropy loss
-            # optimize in training iterations
-            if not test_iter:
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-            # averaged losses
-            if test_iter:
-                test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
-            else:
-                train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
-            if test_iter:
-                print(
-                    f"Epoch [{epoch + 1}/{num_epochs}], "
-                    f"Step [{itr + 1}/{len(train_dataset)}], "
-                    f"Train Loss: {train_loss:.4f}, "
-                    f"Test Loss: {test_loss:.4f}")
-                if not run_recurrent:
-                    nump_subs = sub_score.detach().numpy()
-                    labels = labels.detach().numpy()
-                    print_review(reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0], labels[0, 1])
-                # saving the model
-                # torch.save(model, model.name() + ".pth")
+
+def test_iteration(loss_arr):
+    print("Testing")
+    test_loss, output, progress = 0, 0, 0
+    test_size = len(test_dataset)
+    with torch.no_grad():
+        for labels, reviews, reviews_text in train_dataset:
+            loss, output = perform_step(labels, output, reviews)
+            test_loss += loss.item()
+            if progress % 10 == 0: print(f"progress [{progress}/{test_size}]", end="\r")
+            progress += 1
+        loss_arr.append(test_loss / test_size)
+        print(f"Test Loss: {test_loss / test_size:.2f}, "
+              f"Accuracy: {accuracy(output, labels)}")
+
+
+def perform_step(labels, output, reviews):
+    if run_recurrent:  # Recurrent nets (RNN/GRU)
+        hidden_state = model.init_hidden(int(labels.shape[0]))
+        for i in range(num_words):
+            output, hidden_state = model(reviews[:, i, :], hidden_state)  # HIDE
+    else:  # Token-wise networks (MLP / MLP + Atten.)
+        # sub_score = []
+        if atten_size > 0:  # MLP + atten
+            sub_score, atten_weights = model(reviews)
+        else:  # MLP
+            sub_score = model(reviews)
+        output = torch.mean(sub_score, 1)
+    loss = criterion(output, labels)  # cross-entropy loss
+    return loss, output
+
+
+# %% initializers
+
+model = choose_model()
+if reload_model:
+    print("Reloading model")
+    model.load_state_dict(torch.load(model.name() + ".pth"))
+
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+train_loss, test_loss = 1.0, 1.0
+train_accuracy_arr, test_accuracy_arr, train_loss_arr, test_loss_arr = [], [], [], []
+train_output, test_output = 0, 0
+train_size, test_size = len(train_dataset), len(test_dataset)
+# %% train/test process
+
+for epoch in range(num_epochs):
+    train_progress, test_progress = 0, 0
+    train_epoch_acc,test_epoch_acc = 0,0
+
+    print(f"Epoch [{epoch + 1}/{num_epochs}]")
+
+    for train_labels, train_reviews, train_reviews_text in train_dataset:  # getting training batches
+        train_progress += 1
+        if train_progress % 100 == 0: print(f"Train Progress: [{train_progress}/{train_size}]", end="\r")
+        loss, train_output = perform_step(train_labels, train_output, train_reviews)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
+        train_loss_arr.append(train_loss)
+        train_epoch_acc += accuracy(train_output, train_labels)
+
+    train_epoch_acc /= train_size
+    train_accuracy_arr.append(train_epoch_acc)
+
+    for test_labels, test_reviews, test_reviews_text in test_dataset:
+        test_progress += 1
+        if test_progress % 100 == 0: print(f"Test Progress: [{test_progress}/{test_size}]", end="\r")
+        loss, test_output = perform_step(test_labels, test_output, test_reviews)
+        test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
+        test_loss_arr.append(test_loss)
+        test_epoch_acc += accuracy(test_output, test_labels)
+
+        # if not run_recurrent:
+        #     nump_subs = sub_score.detach().numpy()
+        #     labels = labels.detach().numpy()
+        #     print_review(reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0],
+        #                  labels[0, 1])
+
+    test_epoch_acc /= test_size
+    test_accuracy_arr.append(test_epoch_acc)
+
+    print(
+        f"Train Loss: {train_loss:.4f}, "
+        f"Test Loss: {test_loss:.4f}, "
+        f"Test Accuracy: {test_epoch_acc:.4f}"
+    )
