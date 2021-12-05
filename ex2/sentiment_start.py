@@ -139,14 +139,14 @@ class ExMLP(nn.Module):
 
 
 class ExLRestSelfAtten(nn.Module):
-    def __init__(self, input_size, output_size, hiddenf_size):
+    def __init__(self, input_size, output_size, hidden_size):
         super(ExLRestSelfAtten, self).__init__()
 
         self.input_size = input_size
         self.output_size = output_size
         self.sqrt_hidden_size = np.sqrt(float(hidden_size))
         self.ReLU = torch.nn.ReLU()
-        self.softmax = torch.nn.Softmax(1)
+        self.softmax = torch.nn.Softmax(2)
 
         # Token-wise MLP + Restricted Attention network implementation
 
@@ -179,24 +179,25 @@ class ExLRestSelfAtten(nn.Module):
         x_nei = x_nei[:, atten_size:-atten_size, :]
 
         # x_nei has an additional axis that corresponds to the offset
-        query = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
-        keys = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
-        values = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
-
-        # # Applying attention layer
-
-        for batch in range(batch_size):
-            for shift in range(2 * atten_size + 1):
-                query[batch, :, shift, :] = self.W_q.forward(x_nei[batch, :, shift, :])
-                keys[batch, :, shift, :] = self.W_k.forward(x_nei[batch, :, shift, :])
-                values[batch, :, shift, :] = self.W_v.forward(x_nei[batch, :, shift, :])
-
-        atten_weights = torch.zeros((batch_size, input_size, 2 * atten_size + 1, hidden_size))
-        keys_transpose = torch.transpose(keys, dim0=1, dim1=3)
-        for batch in range(batch_size):
-            for shift in range(2 * atten_size + 1):
-                q, k_T, v = query[batch, :, shift, :], keys_transpose[batch, :, shift, :], values[batch, :, shift, :]
-        val = 2
+        query = self.W_q(x)
+        keys = self.W_k(x_nei)
+        values = self.W_v(x_nei)
+        keys_T = torch.transpose(keys, dim0=1, dim1=3)
+        # query (32,100,64)
+        #         a  b  c
+        # keys_T (32,64,11,100)
+        #         a  c  d   f
+        # QK_T (32,100,100)
+        #        a  b   f
+        QK_T = torch.einsum('abc,acdf->abf', [query, keys_T])
+        atten_weights = self.softmax(QK_T) / self.sqrt_hidden_size
+        # atten_weights (32,100,100)
+        #                 a  b   f
+        # values      (32,100,11,64)
+        #               a  b   c  d
+        # out           (32, 100, 64)
+        x = torch.einsum('abcd,abf->afd', [values, atten_weights])
+        x = self.layer2(x)
         return x, atten_weights
 
 
@@ -262,7 +263,7 @@ if __name__ == '__main__':
 
                 # Token-wise networks (MLP / MLP + Atten.)
 
-                sub_score = []
+                # sub_score = []
                 if atten_size > 0:
                     # MLP + atten
                     sub_score, atten_weights = model(reviews)

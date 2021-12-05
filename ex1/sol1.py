@@ -272,12 +272,3 @@ plt.savefig("optimize_seq_plot.png", format='png')
 plt.show()
 
 
-# %%
-def shift(s):
-    first_s = s
-    while s != first_s:
-        s0 = s[0]
-        s = s[1:]
-        s = s + s0
-        print(s)
-
