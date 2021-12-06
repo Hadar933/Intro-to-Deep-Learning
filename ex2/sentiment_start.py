@@ -4,20 +4,23 @@ from torch.nn.functional import pad
 import torch.nn as nn
 import numpy as np
 import loader as ld
+import torch.utils.data as data_utils
 
+# some parameters to play with
 batch_size = 32
 output_size = 2
 hidden_size = 64  # to experiment with
+test_interval = 50
 
-run_recurrent = True  # else run Token-wise MLP
+run_recurrent = False  # else run Token-wise MLP
 use_RNN = False  # otherwise GRU
-atten_size = 0  # atten > 0 means using restricted self atten
+atten_size = 5  # atten > 0 means using restricted self atten
 
 reload_model = False
 num_epochs = 10
 learning_rate = 0.01
 
-train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size)
+train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size, toy=True)
 
 
 class MatMul(nn.Module):
@@ -42,9 +45,11 @@ class MatMul(nn.Module):
         return x
 
 
-# Implements RNN Unit
-
 class ExRNN(nn.Module):
+    """
+    this class is an implementation of a basic Elman network
+    """
+
     def __init__(self, input_size, output_size, hidden_size):
         super(ExRNN, self).__init__()
 
@@ -74,9 +79,11 @@ class ExRNN(nn.Module):
         return torch.zeros(bs, self.hidden_size)
 
 
-# Implements GRU Unit
-
 class ExGRU(nn.Module):
+    """
+    this class is an implementation of a GRU cell
+    """
+
     def __init__(self, input_size, output_size, hidden_size):
         super(ExGRU, self).__init__()
         self.hidden_size = hidden_size
@@ -108,6 +115,10 @@ class ExGRU(nn.Module):
 
 
 class ExMLP(nn.Module):
+    """
+    this class is an implementation of a basic MLP network
+    """
+
     def __init__(self, input_size, output_size, hidden_size):
         super(ExMLP, self).__init__()
 
@@ -131,6 +142,10 @@ class ExMLP(nn.Module):
 
 
 class ExLRestSelfAtten(nn.Module):
+    """
+    this class is an implementation of an MPL networh with Restricted Self Attention layer
+    """
+
     def __init__(self, input_size, output_size, hidden_size):
         super(ExLRestSelfAtten, self).__init__()
 
@@ -140,11 +155,11 @@ class ExLRestSelfAtten(nn.Module):
         self.ReLU = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(2)
 
-        # Token-wise MLP + Restricted Attention network implementation
-
+        # MLP layers
         self.layer1 = MatMul(input_size, hidden_size)
         self.layer2 = MatMul(hidden_size, output_size)
 
+        # Attention learned weights
         self.W_q = MatMul(hidden_size, hidden_size, use_bias=False)
         self.W_k = MatMul(hidden_size, hidden_size, use_bias=False)
         self.W_v = MatMul(hidden_size, hidden_size, use_bias=False)
@@ -153,8 +168,6 @@ class ExLRestSelfAtten(nn.Module):
         return "MLP_atten"
 
     def forward(self, x):
-        # Token-wise MLP + Restricted Attention network implementation
-
         x = self.layer1(x)
         x = self.ReLU(x)
 
@@ -189,6 +202,7 @@ class ExLRestSelfAtten(nn.Module):
         #               a  b   c  d
         # out           (32, 100, 64)
         x = torch.einsum('abcd,abf->afd', [values, atten_weights])
+
         x = self.layer2(x)
         return x, atten_weights
 
@@ -199,7 +213,6 @@ def print_review(rev_text, sbs1, sbs2, lbl1, lbl2):
     prints also the final scores, the softmaxed prediction values and the true label values
     """
     # TODO: implement
-    pass
 
 
 def accuracy(y_pred, y_true):
@@ -247,18 +260,19 @@ def perform_step(labels, output, reviews):
         for i in range(num_words):
             output, hidden_state = model(reviews[:, i, :], hidden_state)  # HIDE
     else:  # Token-wise networks (MLP / MLP + Atten.)
-        # sub_score = []
         if atten_size > 0:  # MLP + atten
             sub_score, atten_weights = model(reviews)
         else:  # MLP
             sub_score = model(reviews)
         output = torch.mean(sub_score, 1)
     loss = criterion(output, labels)  # cross-entropy loss
-    return loss, output
+    if run_recurrent:
+        return loss, output
+    else:
+        return loss, output, sub_score
 
 
 # %% initializers
-
 model = choose_model()
 if reload_model:
     print("Reloading model")
@@ -267,60 +281,71 @@ if reload_model:
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-curr_train_loss, curr_test_loss = 1.0, 1.0
-train_accuracy_arr, test_accuracy_arr = [], []
-train_loss_arr, test_loss_arr = [], []
+train_loss, test_loss = 1.0, 1.0
+train_accuracy_arr, test_accuracy_arr = [0], [0]
+train_loss_arr, test_loss_arr = [0], [0]
 train_output, test_output = 0, 0  # just as initialization
 train_size, test_size = len(train_dataset), len(test_dataset)
+
 # %% train/test process
+sizes = [64, 96, 128]
+for hidden_size in sizes:
+    for epoch in range(num_epochs):
+        cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
+        train_epoch_acc, test_epoch_acc = 0, 0  # the accuracy both for the train data and the test data
 
-for epoch in range(num_epochs):
-    train_progress, test_progress = 0, 0
-    train_epoch_acc, test_epoch_acc = 0, 0
+        print(f"Epoch [{epoch + 1}/{num_epochs}]")
 
-    print(f"Epoch [{epoch + 1}/{num_epochs}]")
+        # TRAIN
+        for train_labels, train_reviews, train_reviews_text in train_dataset:  # train batch
+            cur_train_batch += 1
+            if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
+            loss, train_output, sub_score = perform_step(train_labels, train_output, train_reviews)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
+            train_loss_arr.append(train_loss)
+            train_epoch_acc += accuracy(train_output, train_labels)  # summing to finally average
 
-    for train_labels, train_reviews, train_reviews_text in train_dataset:  # getting training batches
-        train_progress += 1
-        if train_progress % 100 == 0: print(f"Train Progress: [{train_progress}/{train_size}]", end="\r")
-        loss, train_output = perform_step(train_labels, train_output, train_reviews)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        curr_train_loss = 0.9 * float(loss.detach()) + 0.1 * curr_train_loss
-        train_loss_arr.append(curr_train_loss)
-        train_epoch_acc += accuracy(train_output, train_labels)  # summing to finally average
+        train_epoch_acc /= train_size  # normalizing to achieve average
+        train_accuracy_arr.append(train_epoch_acc)
+        # TEST
+        for test_labels, test_reviews, test_reviews_text in test_dataset:  # test batch
+            cur_test_batch += 1
+            if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
+            loss, test_output, sub_score = perform_step(test_labels, test_output, test_reviews)
+            test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
+            test_loss_arr.append(test_loss)
+            test_epoch_acc += accuracy(test_output, test_labels)
 
-    train_epoch_acc /= train_size  # normalizing to achieve average
-    train_accuracy_arr.append(train_epoch_acc)
+            # if not run_recurrent:
+            #     nump_subs = sub_score.detach().numpy()
+            #     labels = test_labels.detach().numpy()
+            #     print_review(test_reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0], labels[0, 1])
 
-    for test_labels, test_reviews, test_reviews_text in test_dataset:
-        test_progress += 1
-        if test_progress % 100 == 0: print(f"Test Progress: [{test_progress}/{test_size}]", end="\r")
-        loss, test_output = perform_step(test_labels, test_output, test_reviews)
-        curr_test_loss = 0.8 * float(loss.detach()) + 0.2 * curr_test_loss
-        test_loss_arr.append(curr_test_loss)
-        test_epoch_acc += accuracy(test_output, test_labels)
+        test_epoch_acc /= test_size
+        test_accuracy_arr.append(test_epoch_acc)
 
-        # if not run_recurrent:
-        #     nump_subs = sub_score.detach().numpy()
-        #     labels = labels.detach().numpy()
-        #     print_review(reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0],
-        #                  labels[0, 1])
+        print(
+            f"Train Loss: {train_loss:.4f}, "
+            f"Train Accuracy: {train_epoch_acc:.4f}, "
+            f"Test Loss: {test_loss:.4f}, "
+            f"Test Accuracy: {test_epoch_acc:.4f}"
+        )
+    # plot
+    plt.plot(test_accuracy_arr)
+    # re-initializing
+    train_accuracy_arr, test_accuracy_arr = [0], [0]
+    train_loss_arr, test_loss_arr = [0], [0]
 
-    test_epoch_acc /= test_size
-    test_accuracy_arr.append(test_epoch_acc)
-
-    print(
-        f"Train Loss: {curr_train_loss:.4f}, "
-        f"Test Loss: {curr_test_loss:.4f}, "
-        f"Test Accuracy: {test_epoch_acc:.4f}"
-    )
-
-# %% plotting
-plt.plot(test_accuracy_arr)
-plt.title(f"Test accuracy [{model.name()}]")
-plt.xlabel("Iterations")
+# displaying plot
+title = f"Test accuracy [{model.name()}]"
+plt.title(title)
+plt.legend(sizes, title="hidden size")
+plt.xlabel("Epochs")
+plt.xlim([0, num_epochs])
 plt.ylabel("Accuracy")
 plt.grid()
+plt.savefig(title)
 plt.show()

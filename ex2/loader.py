@@ -32,6 +32,7 @@ def tokinize(s):
 
 def load_data_set(load_my_reviews=False):
     data = pd.read_csv("IMDB Dataset.csv")
+    data = data.sample(frac=1).reset_index(drop=True)
     train_data = data[:Train_size]
     train_iter = ReviewDataset(train_data["review"], train_data["sentiment"])
     test_data = data[Train_size:]
