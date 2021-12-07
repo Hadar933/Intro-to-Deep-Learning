@@ -4,7 +4,6 @@ from torch.nn.functional import pad
 import torch.nn as nn
 import numpy as np
 import loader as ld
-import torch.utils.data as data_utils
 
 # some parameters to play with
 batch_size = 32
@@ -216,26 +215,23 @@ def print_review(model, reviews, reviews_text, true_labels):
     * the softmax-ed prediction values
     * the true label values
     """
-    is_correct = False
-    if atten_size > 0:
-        sub_score, atten_weights = model(reviews)
-    else:
-        sub_score = model(reviews)
-    final_score = torch.mean(sub_score, 1)
-    final_score = torch.softmax(final_score, 1)
-    prediction = torch.round(final_score)
-    prediction = prediction.detach().numpy()[0]
-    true_labels = true_labels.detach().numpy()
-    true_prediction = "Positive" if true_labels[0] == 1 else "Negative"
-
-    sub_score = sub_score.detach().numpy()
-    if prediction[0] == true_labels[0] and prediction[1] == true_labels[1]:
-        is_correct = True
-
-    slice = 10
-    print(f"the review is {reviews_text}, which is labeld as {true_labels} (aka '{true_prediction}').\n")
-    print(f"first few words and they're sub-scores:{reviews_text[:slice]}\n {sub_score}.\n")
-    print(f"predicted as:{prediction}, which is {is_correct}.\n")
+    for r, rt, tl in zip(reviews, reviews_text, true_labels):
+        is_correct = False
+        if atten_size > 0:
+            sub_score, atten_weights = model(r)
+        else:
+            sub_score = model(r)
+        final_score = torch.mean(sub_score, 1)
+        final_score = torch.softmax(final_score, 1)[0]
+        prediction = torch.round(final_score)
+        sub_score = torch.detach(torch.squeeze(sub_score)).numpy()[:len(rt)]  # removing zero values
+        print(f"review: {rt}.")
+        print(f"true label: {tl.detach().numpy()}")
+        print(f"predicted: {prediction.detach().numpy()}")
+        print(f"scores:")
+        for word, score in zip(rt, sub_score):
+            print(f"{word}: {score}")
+        print('end')
 
 
 def accuracy(y_pred, y_true):
@@ -312,7 +308,7 @@ train_output, test_output = 0, 0  # just as initialization
 train_size, test_size = len(train_dataset), len(test_dataset)
 
 # %% print review
-for_print_train,for_print_test = ld.get_data_set(batch_size, "IMDB dataset small.csv", toy=True)[:2]
+for_print_train, for_print_test = ld.get_data_set(batch_size, "IMDB dataset small.csv", toy=True)[:2]
 for print_labels, print_reviews, print_reviews_text in for_print_test:  # test batch (
     print_review(model, print_reviews, print_reviews_text, print_labels)
 
@@ -383,5 +379,3 @@ plt.ylabel("Accuracy")
 plt.grid()
 plt.savefig(title)
 plt.show()
-
-
