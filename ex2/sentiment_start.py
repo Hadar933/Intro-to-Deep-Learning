@@ -12,9 +12,9 @@ output_size = 2
 hidden_size = 64  # to experiment with
 test_interval = 50
 
-run_recurrent = False  # else run Token-wise MLP
-use_RNN = False  # otherwise GRU
-atten_size = 5  # atten > 0 means using restricted self atten
+run_recurrent = True  # else run Token-wise MLP
+use_RNN = True  # otherwise GRU
+atten_size = 0  # atten > 0 means using restricted self atten
 
 reload_model = False
 num_epochs = 10
@@ -207,12 +207,17 @@ class ExLRestSelfAtten(nn.Module):
         return x, atten_weights
 
 
-def print_review(rev_text, sbs1, sbs2, lbl1, lbl2):
+def print_review(model, review_text, words_sub_scores, final_score, predicted_labels, true_labels):
     """
-    prints portion of the review (20-30 first words), with the sub-scores each work obtained
-    prints also the final scores, the softmaxed prediction values and the true label values
+    prints the following:
+    * portion of the review (20-30 first words)
+    * the sub-scores each word (from above) obtained
+    * the final scores
+    * the softmax-ed prediction values
+    * the true label values
     """
-    # TODO: implement
+    sub_score, atten_weights = model(review_text)
+    output = torch.mean(sub_score, 1)
 
 
 def accuracy(y_pred, y_true):
@@ -289,7 +294,8 @@ train_size, test_size = len(train_dataset), len(test_dataset)
 
 # %% train/test process
 sizes = [64, 96, 128]
-for hidden_size in sizes:
+for hidden_size in sizes[::-1]:
+    print(f'current hidden size ={hidden_size}\n')
     for epoch in range(num_epochs):
         cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
         train_epoch_acc, test_epoch_acc = 0, 0  # the accuracy both for the train data and the test data
@@ -300,7 +306,10 @@ for hidden_size in sizes:
         for train_labels, train_reviews, train_reviews_text in train_dataset:  # train batch
             cur_train_batch += 1
             if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
-            loss, train_output, sub_score = perform_step(train_labels, train_output, train_reviews)
+            if run_recurrent:
+                loss, train_output = perform_step(train_labels, train_output, train_reviews)
+            else:
+                loss, train_output, sub_score = perform_step(train_labels, train_output, train_reviews)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -310,11 +319,16 @@ for hidden_size in sizes:
 
         train_epoch_acc /= train_size  # normalizing to achieve average
         train_accuracy_arr.append(train_epoch_acc)
+
         # TEST
         for test_labels, test_reviews, test_reviews_text in test_dataset:  # test batch
             cur_test_batch += 1
             if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
-            loss, test_output, sub_score = perform_step(test_labels, test_output, test_reviews)
+
+            if run_recurrent:
+                loss, test_output = perform_step(test_labels, test_output, test_reviews)
+            else:
+                loss, test_output, sub_score = perform_step(test_labels, test_output, test_reviews)
             test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
             test_loss_arr.append(test_loss)
             test_epoch_acc += accuracy(test_output, test_labels)
