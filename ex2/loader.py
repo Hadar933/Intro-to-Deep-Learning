@@ -30,8 +30,8 @@ def tokinize(s):
     return splited[:MAX_LENGTH]
 
 
-def load_data_set(load_my_reviews=False):
-    data = pd.read_csv("IMDB Dataset.csv")
+def load_data_set(dataset="IMDB Dataset.csv", load_my_reviews=False):
+    data = pd.read_csv(dataset)
     data = data.sample(frac=1).reset_index(drop=True)
     train_data = data[:Train_size]
     train_iter = ReviewDataset(train_data["review"], train_data["sentiment"])
@@ -79,10 +79,9 @@ def collact_batch(batch):
 ##########################
 
 my_test_texts = []
-my_test_texts.append(" this movie is very very bad ,the worst movie ")
-my_test_texts.append(" this movie is so great")
-my_test_texts.append("I really  liked the fish and animations the anther casting was not so good ")
-my_test_labels = ["neg", "pos", "pos"]
+my_test_texts.append(" although I love the actors, the movie turned out remarkably dull")
+my_test_texts.append("This movie is the best, I love it")
+my_test_labels = ["negative", "positive"]
 
 
 ##########################
@@ -104,8 +103,8 @@ class ReviewDataset(torch.utils.data.Dataset):
         return X, y
 
 
-def get_data_set(batch_size, toy=False):
-    train_data, test_data = load_data_set(load_my_reviews=toy)
+def get_data_set(batch_size, dataset="IMDB Dataset.csv", toy=False):
+    train_data, test_data = load_data_set(dataset, load_my_reviews=toy)
     train_dataloader = DataLoader(train_data, batch_size=batch_size,
                                   shuffle=True, collate_fn=collact_batch)
     test_dataloader = DataLoader(test_data, batch_size=batch_size,

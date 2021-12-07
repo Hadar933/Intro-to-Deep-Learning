@@ -12,15 +12,15 @@ output_size = 2
 hidden_size = 64  # to experiment with
 test_interval = 50
 
-run_recurrent = True  # else run Token-wise MLP
+run_recurrent = False  # else run Token-wise MLP
 use_RNN = True  # otherwise GRU
-atten_size = 0  # atten > 0 means using restricted self atten
+atten_size = 0  # atten > 0 means using restricted self attention
 
 reload_model = False
 num_epochs = 10
 learning_rate = 0.01
 
-train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size, toy=True)
+train_dataset, test_dataset, num_words, input_size = ld.get_data_set(batch_size, toy=False)
 
 
 class MatMul(nn.Module):
@@ -137,7 +137,6 @@ class ExMLP(nn.Module):
         x = self.layer1(x)
         x = self.ReLU(x)
         x = self.layer2(x)
-        x = torch.sigmoid(x)
         return x
 
 
@@ -204,10 +203,11 @@ class ExLRestSelfAtten(nn.Module):
         x = torch.einsum('abcd,abf->afd', [values, atten_weights])
 
         x = self.layer2(x)
+
         return x, atten_weights
 
 
-def print_review(model, review_text, words_sub_scores, final_score, predicted_labels, true_labels):
+def print_review(model, reviews, reviews_text, true_labels):
     """
     prints the following:
     * portion of the review (20-30 first words)
@@ -216,14 +216,33 @@ def print_review(model, review_text, words_sub_scores, final_score, predicted_la
     * the softmax-ed prediction values
     * the true label values
     """
-    sub_score, atten_weights = model(review_text)
-    output = torch.mean(sub_score, 1)
+    is_correct = False
+    if atten_size > 0:
+        sub_score, atten_weights = model(reviews)
+    else:
+        sub_score = model(reviews)
+    final_score = torch.mean(sub_score, 1)
+    final_score = torch.softmax(final_score, 1)
+    prediction = torch.round(final_score)
+    prediction = prediction.detach().numpy()[0]
+    true_labels = true_labels.detach().numpy()
+    true_prediction = "Positive" if true_labels[0] == 1 else "Negative"
+
+    sub_score = sub_score.detach().numpy()
+    if prediction[0] == true_labels[0] and prediction[1] == true_labels[1]:
+        is_correct = True
+
+    slice = 10
+    print(f"the review is {reviews_text}, which is labeld as {true_labels} (aka '{true_prediction}').\n")
+    print(f"first few words and they're sub-scores:{reviews_text[:slice]}\n {sub_score}.\n")
+    print(f"predicted as:{prediction}, which is {is_correct}.\n")
 
 
 def accuracy(y_pred, y_true):
     """
     calculates the accuracy given a prediction and true labels
     """
+
     size = y_true.shape[0]
     y_pred = torch.softmax(y_pred, dim=1)
     rounded_y_pred = torch.round(y_pred)
@@ -292,74 +311,77 @@ train_loss_arr, test_loss_arr = [0], [0]
 train_output, test_output = 0, 0  # just as initialization
 train_size, test_size = len(train_dataset), len(test_dataset)
 
+# %% print review
+for_print_train,for_print_test = ld.get_data_set(batch_size, "IMDB dataset small.csv", toy=True)[:2]
+for print_labels, print_reviews, print_reviews_text in for_print_test:  # test batch (
+    print_review(model, print_reviews, print_reviews_text, print_labels)
+
 # %% train/test process
-sizes = [64, 96, 128]
-for hidden_size in sizes[::-1]:
-    print(f'current hidden size ={hidden_size}\n')
-    for epoch in range(num_epochs):
-        cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
-        train_epoch_acc, test_epoch_acc = 0, 0  # the accuracy both for the train data and the test data
+# sizes = [64, 96, 128]
+# for hidden_size in sizes:
+#     print(f'current hidden size ={hidden_size}\n')
+for epoch in range(num_epochs):
+    cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
+    train_epoch_acc, test_epoch_acc = 0, 0  # the accuracy both for the train data and the test data
 
-        print(f"Epoch [{epoch + 1}/{num_epochs}]")
+    print(f"Epoch [{epoch + 1}/{num_epochs}]")
 
-        # TRAIN
-        for train_labels, train_reviews, train_reviews_text in train_dataset:  # train batch
-            cur_train_batch += 1
-            if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
-            if run_recurrent:
-                loss, train_output = perform_step(train_labels, train_output, train_reviews)
-            else:
-                loss, train_output, sub_score = perform_step(train_labels, train_output, train_reviews)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
-            train_loss_arr.append(train_loss)
-            train_epoch_acc += accuracy(train_output, train_labels)  # summing to finally average
+    # TRAIN
+    for train_labels, train_reviews, train_reviews_text in train_dataset:  # train batch
+        cur_train_batch += 1
+        if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
+        if run_recurrent:
+            loss, train_output = perform_step(train_labels, train_output, train_reviews)
+        else:
+            loss, train_output, sub_score = perform_step(train_labels, train_output, train_reviews)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
+        train_loss_arr.append(train_loss)
+        train_epoch_acc += accuracy(train_output, train_labels)  # summing to finally average
 
-        train_epoch_acc /= train_size  # normalizing to achieve average
-        train_accuracy_arr.append(train_epoch_acc)
+    train_epoch_acc /= train_size  # normalizing to achieve average
+    train_accuracy_arr.append(train_epoch_acc)
 
-        # TEST
-        for test_labels, test_reviews, test_reviews_text in test_dataset:  # test batch
-            cur_test_batch += 1
-            if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
+    # TEST
+    for test_labels, test_reviews, test_reviews_text in test_dataset:  # test batch
+        cur_test_batch += 1
+        if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
 
-            if run_recurrent:
-                loss, test_output = perform_step(test_labels, test_output, test_reviews)
-            else:
-                loss, test_output, sub_score = perform_step(test_labels, test_output, test_reviews)
-            test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
-            test_loss_arr.append(test_loss)
-            test_epoch_acc += accuracy(test_output, test_labels)
+        if run_recurrent:
+            loss, test_output = perform_step(test_labels, test_output, test_reviews)
+        else:
+            loss, test_output, sub_score = perform_step(test_labels, test_output, test_reviews)
+        test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
+        test_loss_arr.append(test_loss)
+        test_epoch_acc += accuracy(test_output, test_labels)
 
-            # if not run_recurrent:
-            #     nump_subs = sub_score.detach().numpy()
-            #     labels = test_labels.detach().numpy()
-            #     print_review(test_reviews_text[0], nump_subs[0, :, 0], nump_subs[0, :, 1], labels[0, 0], labels[0, 1])
+    test_epoch_acc /= test_size
+    test_accuracy_arr.append(test_epoch_acc)
 
-        test_epoch_acc /= test_size
-        test_accuracy_arr.append(test_epoch_acc)
+    print(
+        f"Train Loss: {train_loss:.4f}, "
+        f"Train Accuracy: {train_epoch_acc:.4f}, "
+        f"Test Loss: {test_loss:.4f}, "
+        f"Test Accuracy: {test_epoch_acc:.4f}"
+    )
+# plot
+# plt.plot(test_accuracy_arr)
+# # re-initializing
+# train_accuracy_arr, test_accuracy_arr = [0], [0]
+# train_loss_arr, test_loss_arr = [0], [0]
 
-        print(
-            f"Train Loss: {train_loss:.4f}, "
-            f"Train Accuracy: {train_epoch_acc:.4f}, "
-            f"Test Loss: {test_loss:.4f}, "
-            f"Test Accuracy: {test_epoch_acc:.4f}"
-        )
-    # plot
-    plt.plot(test_accuracy_arr)
-    # re-initializing
-    train_accuracy_arr, test_accuracy_arr = [0], [0]
-    train_loss_arr, test_loss_arr = [0], [0]
-
+# %%
 # displaying plot
 title = f"Test accuracy [{model.name()}]"
 plt.title(title)
-plt.legend(sizes, title="hidden size")
+# plt.legend(sizes, title="hidden size")
 plt.xlabel("Epochs")
 plt.xlim([0, num_epochs])
 plt.ylabel("Accuracy")
 plt.grid()
 plt.savefig(title)
 plt.show()
+
+
