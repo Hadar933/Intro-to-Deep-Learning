@@ -34,6 +34,7 @@ def load_data_set(dataset="IMDB Dataset.csv", load_my_reviews=False):
     data = pd.read_csv(dataset)
     data = data.sample(frac=1).reset_index(drop=True)
     train_data = data[:Train_size]
+    # train_data = data[:1]
     train_iter = ReviewDataset(train_data["review"], train_data["sentiment"])
     test_data = data[Train_size:]
     if load_my_reviews:
@@ -79,9 +80,11 @@ def collact_batch(batch):
 ##########################
 
 my_test_texts = []
-my_test_texts.append(" although I love the actors, the movie turned out remarkably dull")
+my_test_texts.append(" the concept had great potential, but the performance was bad")
 my_test_texts.append("This movie is the best, I love it")
-my_test_labels = ["negative", "positive"]
+my_test_texts.append(
+    "though the movie was very long and tedious, and I couldn't concentrate the entire time, I enjoyed it")
+my_test_labels = ["negative", "positive","positive"]
 
 
 ##########################
@@ -110,3 +113,5 @@ def get_data_set(batch_size, dataset="IMDB Dataset.csv", toy=False):
     test_dataloader = DataLoader(test_data, batch_size=batch_size,
                                  shuffle=True, collate_fn=collact_batch)
     return train_dataloader, test_dataloader, MAX_LENGTH, embedding_size
+
+# %%
