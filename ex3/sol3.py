@@ -67,8 +67,63 @@ class AutoEncoder(nn.Module):
 
         return encoded, decoded
 
+
 # AE = AutoEncoder()
 # im = mnist_test[0][0][None, ...].float()
 # out = AE.forward(im)
 
 # %%
+num_epochs = 10
+learning_rate = 0.0001
+
+AE = AutoEncoder()
+criterion = nn.BCELoss()
+optimizer = torch.optim.Adam(AE.parameters(), lr=learning_rate)
+
+train_loss, test_loss = 1.0, 1.0
+train_accuracy_arr, test_accuracy_arr = [0], [0]
+train_loss_arr, test_loss_arr = [0], [0]
+train_output, test_output = 0, 0  # just as initialization
+train_size, test_size = len(mnist_train), len(mnist_test)
+for epoch in range(num_epochs):
+    cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
+    train_epoch_acc, test_epoch_acc = 0, 0  # the accuracy both for the train data and the test data
+
+    print(f"Epoch [{epoch + 1}/{num_epochs}]")
+
+    # TRAIN
+    for train_batch in train_loader:  # train batch
+        optimizer.zero_grad()
+        train_images = train_batch[0]/255  # we dont need the labels for now, also we normalize
+        cur_train_batch += 1
+        enc, dec = AE(train_images)
+        loss = criterion(dec, train_images)
+        loss.backward()
+        optimizer.step()
+        train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
+        train_loss_arr.append(train_loss)
+        # train_epoch_acc += accuracy(train_output, train_labels)  # summing to finally average
+
+    # train_epoch_acc /= train_size  # normalizing to achieve average
+    # train_accuracy_arr.append(train_epoch_acc)
+
+    # TEST
+    for test_batch in test_loader:  # test batch
+        test_images = test_batch[0]/255
+        cur_test_batch += 1
+        if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
+        enc, dec = AE(test_images)
+        loss = criterion(dec, train_images)
+        test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
+        test_loss_arr.append(test_loss)
+        # test_epoch_acc += accuracy(test_output, test_labels)
+
+    # test_epoch_acc /= test_size
+    # test_accuracy_arr.append(test_epoch_acc)
+
+    print(
+        f"Train Loss: {train_loss:.4f}, "
+        # f"Train Accuracy: {train_epoch_acc:.4f}, "
+        f"Test Loss: {test_loss:.4f}, "
+        # f"Test Accuracy: {test_epoch_acc:.4f}"
+    )
