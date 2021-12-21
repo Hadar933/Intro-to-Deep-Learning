@@ -48,20 +48,20 @@ class AutoEncoder(nn.Module):
         # (N,C,H,W):=(batch size, channels, height, weight)
         # encoding:
         # (N,1,32,32)->(N,4,28,28)->(N,16,24,24)->(N,16,12,12)->(N,4,8,8)
-        encoded = self.activation(self.enc_conv1(im))
-        encoded = self.activation(self.enc_conv2(encoded))
-        encoded = self.pool(encoded)
-        encoded = self.activation(self.enc_conv3(encoded))
-        encoded = self.activation(self.enc_fully_connected(encoded))
+        im = self.activation(self.enc_conv1(im))
+        im = self.activation(self.enc_conv2(im))
+        im = self.pool(im)
+        im = self.activation(self.enc_conv3(im))
+        im = self.activation(self.enc_fully_connected(im))
 
         # decoding:
         # (N,4,8,8)->(N,16,16,16)->(N,1,32,32)
         # decoded = self.dec_fully_connected(encoded)
-        decoded = self.activation(self.dec_conv1(encoded))
-        decoded = self.dec_conv2(decoded)
-        decoded = self.sigmoid(decoded)  # sigmoid to normalize the values in [0,1]
+        im = self.activation(self.dec_conv1(im))
+        im = self.dec_conv2(im)
+        im = self.sigmoid(im)  # sigmoid to normalize the values in [0,1]
 
-        return encoded, decoded
+        return im
 
 
 # %%
@@ -69,18 +69,19 @@ def plot_reconstructed(epoch, model):
     """
     plots an image from the test set, to see how the AE improves as the epochs increases
     """
-    dec, enc = model(torch.unsqueeze(mnist_test[sample][0], 1).float())
+    out = model(torch.unsqueeze(mnist_test[sample][0], 1).float())
     plt.subplot(3, 4, epoch + 2)
-    plt.imshow(enc[0][0].detach().numpy(), cmap="gray")
+    plt.imshow(out[0][0].detach().numpy(), cmap="gray")
     plt.title(f"epoch #{epoch}.")
 
 
 # %% TRAIN - TEST iterations
-num_epochs = 2 # TODO: change to 11
+num_epochs = 11
 learning_rate = 0.001
 
 AE = AutoEncoder()
-criterion = nn.BCELoss()
+l1 = nn.L1Loss()
+l2 = nn.MSELoss()
 optimizer = torch.optim.Adam(AE.parameters(), lr=learning_rate)
 
 fig = plt.figure()  # plots the re-constucted example
@@ -89,19 +90,17 @@ plt.subplot(3, 4, 1)
 plt.imshow(torch.squeeze(mnist_test[sample][0]), cmap="gray")
 plt.title(f"Original.")
 
-train_loss, test_loss = 1.0, 1.0
-train_accuracy_arr, test_accuracy_arr = [0], [0]
 train_loss_arr, test_loss_arr = [1], [1]
-train_output, test_output = 0, 0  # just as initialization
+# train_accuracy_arr, test_accuracy_arr = [0], [0]
 train_size, test_size = len(train_loader), len(test_loader)
 
 for epoch in range(num_epochs):
     plot_reconstructed(epoch, AE)
     cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
-    train_epoch_acc, test_epoch_acc = 0, 0  # the accuracy both for the train data and the test data
+    # train_epoch_acc, test_epoch_acc = 0, 0  # the accuracy both for the train data and the test data
 
     print(f"Epoch [{epoch + 1}/{num_epochs}]")
-
+    train_loss, test_loss = 0, 0
     # TRAIN
     for train_batch in train_loader:  # train batch
         optimizer.zero_grad()
@@ -109,12 +108,12 @@ for epoch in range(num_epochs):
         train_images = train_images.to(device)
         cur_train_batch += 1
         if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
-        enc, dec = AE(train_images)
-        loss = criterion(dec, train_images)
+        out = AE(train_images)
+        loss = 0.5 * l1(out, train_images) + 0.5 * l2(out, train_images)
         loss.backward()
         optimizer.step()
-        train_loss = 0.9 * float(loss.detach()) + 0.1 * train_loss
-        train_loss_arr.append(train_loss)
+        train_loss += loss.item()
+
         # train_epoch_acc += accuracy(train_output, train_labels)  # summing to finally average
 
     # train_epoch_acc /= train_size  # normalizing to achieve average
@@ -127,14 +126,17 @@ for epoch in range(num_epochs):
             test_images = test_images.to(device)
             cur_test_batch += 1
             if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
-            enc, dec = AE(test_images)
-            loss = criterion(dec, test_images)
-            test_loss = 0.8 * float(loss.detach()) + 0.2 * test_loss
-            test_loss_arr.append(test_loss)
+            out = AE(test_images)
+            loss = 0.5 * l1(out, test_images) + 0.5 * l2(out, test_images)
+            test_loss += loss.item()
             # test_epoch_acc += accuracy(test_output, test_labels)
 
         # test_epoch_acc /= test_size
         # test_accuracy_arr.append(test_epoch_acc)
+    train_loss = train_loss / train_size
+    test_loss = test_loss / test_size
+    train_loss_arr.append(train_loss)
+    test_loss_arr.append(test_loss)
 
     print(
         f"Train Loss: {train_loss:.4f}, "
