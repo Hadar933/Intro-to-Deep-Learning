@@ -8,7 +8,6 @@ import random
 device = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 30
 LATENT_DIM = 8  # can easily up-sample to 32
-# loading MNIST and padding 28x28 -> 32x32
 pad_and_tensorize = transforms.Compose([transforms.Pad(2), transforms.PILToTensor()])
 mnist_train = datasets.MNIST(root='./data', train=True, download=True, transform=pad_and_tensorize)
 mnist_test = datasets.MNIST(root='./data', train=False, download=True, transform=pad_and_tensorize)
@@ -35,28 +34,22 @@ class AutoEncoder(nn.Module):
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.sigmoid = nn.Sigmoid()
         # encoder weights:
-        self.enc_conv1 = nn.Conv2d(in_channels=1, out_channels=4, kernel_size=(5, 5), stride=(1, 1))
-        self.enc_conv2 = nn.Conv2d(in_channels=4, out_channels=16, kernel_size=(5, 5), stride=(1, 1))
-        self.enc_conv3 = nn.Conv2d(in_channels=16, out_channels=4, kernel_size=(5, 5), stride=(1, 1))
+        self.enc_conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), padding=(1, 1))
+        self.enc_conv2 = nn.Conv2d(in_channels=16, out_channels=4, kernel_size=(3, 3), padding=(1, 1))
 
-        self.enc_fully_connected = nn.Linear(LATENT_DIM, LATENT_DIM)
+        # self.enc_fully_connected = nn.Linear(LATENT_DIM, LATENT_DIM)
         # decoder weights:
         self.dec_conv1 = nn.ConvTranspose2d(in_channels=4, out_channels=16, kernel_size=(2, 2), stride=(2, 2))
         self.dec_conv2 = nn.ConvTranspose2d(in_channels=16, out_channels=1, kernel_size=(2, 2), stride=(2, 2))
 
     def forward(self, im):
-        # (N,C,H,W):=(batch size, channels, height, weight)
         # encoding:
-        # (N,1,32,32)->(N,4,28,28)->(N,16,24,24)->(N,16,12,12)->(N,4,8,8)
         im = self.activation(self.enc_conv1(im))
+        im = self.pool(im)
         im = self.activation(self.enc_conv2(im))
         im = self.pool(im)
-        im = self.activation(self.enc_conv3(im))
-        im = self.activation(self.enc_fully_connected(im))
 
         # decoding:
-        # (N,4,8,8)->(N,16,16,16)->(N,1,32,32)
-        # decoded = self.dec_fully_connected(encoded)
         im = self.activation(self.dec_conv1(im))
         im = self.dec_conv2(im)
         im = self.sigmoid(im)  # sigmoid to normalize the values in [0,1]
@@ -69,7 +62,7 @@ def plot_reconstructed(epoch, model):
     """
     plots an image from the test set, to see how the AE improves as the epochs increases
     """
-    out = model(torch.unsqueeze(mnist_test[sample][0], 1).float())
+    out = model(torch.unsqueeze(mnist_test[sample][0] / 255, 1).float())
     plt.subplot(3, 4, epoch + 2)
     plt.imshow(out[0][0].detach().numpy(), cmap="gray")
     plt.title(f"epoch #{epoch}.")
@@ -80,8 +73,7 @@ num_epochs = 11
 learning_rate = 0.001
 
 AE = AutoEncoder()
-l1 = nn.L1Loss()
-l2 = nn.MSELoss()
+criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(AE.parameters(), lr=learning_rate)
 
 fig = plt.figure()  # plots the re-constucted example
@@ -109,7 +101,7 @@ for epoch in range(num_epochs):
         cur_train_batch += 1
         if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
         out = AE(train_images)
-        loss = 0.5 * l1(out, train_images) + 0.5 * l2(out, train_images)
+        loss = criterion(out, train_images)
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
@@ -127,7 +119,7 @@ for epoch in range(num_epochs):
             cur_test_batch += 1
             if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
             out = AE(test_images)
-            loss = 0.5 * l1(out, test_images) + 0.5 * l2(out, test_images)
+            loss = criterion(out, test_images)
             test_loss += loss.item()
             # test_epoch_acc += accuracy(test_output, test_labels)
 
@@ -144,6 +136,8 @@ for epoch in range(num_epochs):
         f"Test Loss: {test_loss:.4f}, "
         # f"Test Accuracy: {test_epoch_acc:.4f}"
     )
+plt.xticks([])
+plt.yticks([])
 plt.show()
 # %% plotting loss
 plt.plot(train_loss_arr), plt.plot(test_loss_arr)
@@ -151,4 +145,22 @@ plt.title("Loss Plot - AutoEncoder"), plt.legend(["Train", "Test"]), plt.xlabel(
 plt.xlim([0, num_epochs])
 plt.grid()
 plt.savefig("Loss Plot - AutoEncoder")
+plt.show()
+# %% plotting reconstruction for various examples
+test_iter = iter(test_loader)
+images = test_iter.next()[0]
+images = images[:6, :, :, :] / 255  # taking 6 examples and normalizing
+out = AE(images)
+images = torch.squeeze(images)
+out = torch.squeeze(out)
+im_to_plot = [images[i, :, :].detach().numpy() for i in range(6)]
+out_to_plot = [out[i, :, :].detach().numpy() for i in range(6)]
+fig = plt.figure()  # plots the re-constucted example
+fig.suptitle(f"Reconstruction of 6 examples (from the Test set)")
+for j in range(6):
+    plt.subplot(2, 6, j+1)
+    plt.imshow(im_to_plot[j],cmap="gray")
+    plt.subplot(2, 6, j + 7)
+    plt.imshow(out_to_plot[j],cmap="gray")
+plt.savefig("Reconstruction of 6 examples (from the Test set)")
 plt.show()
