@@ -5,6 +5,9 @@ from matplotlib import pyplot as plt
 import torchvision.datasets as datasets
 import random
 from matplotlib.pyplot import figure
+from sklearn import tree
+import numpy as np
+from sklearn.metrics import accuracy_score
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 30
@@ -67,12 +70,6 @@ num_epochs = 11
 learning_rate = 0.001
 models = [AutoEncoder(d) for d in range(1, 9)]
 criterion = nn.MSELoss()
-
-# fig = plt.figure()  # plots the re-constucted example
-# fig.suptitle(f"Reconstruction of the digit {mnist_test[sample][1]} (the {sample}'th sample from the Test set)")
-# plt.subplot(3, 4, 1)
-# plt.imshow(torch.squeeze(mnist_test[sample][0]), cmap="gray")
-# plt.title(f"Original.")
 
 train_loss_arr, test_loss_arr = [], []
 # train_accuracy_arr, test_accuracy_arr = [0], [0]
@@ -147,7 +144,7 @@ for pos, AE in enumerate(models):
     out = AE(torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float())
     axs[pos + 1].imshow(out[0][0].detach().numpy(), cmap="gray")
     axs[pos + 1].set_title(f"8x{AE.latent_dim}")
-plt.savefig("Original vs Reconstructed image for various AEs")
+fig.savefig("Original vs Reconstructed image for various AEs")
 plt.show()
 
 # %% plotting reconstruction for various examples
@@ -168,3 +165,22 @@ for j in range(6):
     plt.imshow(out_to_plot[j], cmap="gray")
 # plt.savefig("Reconstruction of 6 examples (from the Test set)")
 plt.show()
+# %% using Decision tree as a basic classifier:
+classifier = tree.DecisionTreeClassifier()
+accuracies = []
+y_train = mnist_train.train_labels.numpy()
+y_test = mnist_test.test_labels.numpy()
+for AE in models:
+    encoder = torch.nn.Sequential(
+        AE.enc_conv1, AE.activation, AE.pool, AE.enc_conv2,
+        AE.activation, AE.pool, AE.enc_fully_connected
+    )
+    encoded_train = encoder(mnist_train)
+    encoded_test = encoder(mnist_test)
+    X_train = encoded_train.data.numpy() / 255  # convert to numpy and normalize
+    X_train = np.pad(X_train, ((0, 0), (2, 2), (2, 2)), 'constant', constant_values=0)  # pad to 32 x 32
+    X_test = encoded_test.data.numpy() / 255
+    X_test = np.pad(X_test, ((0, 0), (2, 2), (2, 2)), 'constant', constant_values=0)
+    classifier.fit(X_train, y_train)
+    y_pred = classifier.predict(X_test)
+    accuracies.append(accuracy_score(y_test, y_pred))
