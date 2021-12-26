@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import torchvision.datasets as datasets
 import random
 from matplotlib.pyplot import figure
-from sklearn import tree
+from sklearn import svm
 import numpy as np
 from sklearn.metrics import accuracy_score
 
@@ -65,12 +65,12 @@ class AutoEncoder(nn.Module):
         return im
 
 
-# %% TRAIN - TEST iterations
+# %% Initializers
 num_epochs = 11
 learning_rate = 0.001
 models = [AutoEncoder(d) for d in range(1, 9)]
 criterion = nn.MSELoss()
-
+# %% test train iterations
 train_loss_arr, test_loss_arr = [], []
 # train_accuracy_arr, test_accuracy_arr = [0], [0]
 train_size, test_size = len(train_loader), len(test_loader)
@@ -165,22 +165,44 @@ for j in range(6):
     plt.imshow(out_to_plot[j], cmap="gray")
 # plt.savefig("Reconstruction of 6 examples (from the Test set)")
 plt.show()
-# %% using Decision tree as a basic classifier:
-classifier = tree.DecisionTreeClassifier()
+# %% using SVM as a basic classifier, we compare the accuracy rates for every model
+classifier = svm.SVC(decision_function_shape='ovo')
+padder = transforms.Pad(2)
+train_size = 4200
+test_size = train_size // 6
 accuracies = []
+X_train = padder(torch.unsqueeze(mnist_train.data, 1)) / 255
+X_train = X_train[:train_size, :, :, :]
+X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
+X_test = X_test[:test_size, :, :, :]
 y_train = mnist_train.train_labels.numpy()
+y_train = y_train[:train_size]
 y_test = mnist_test.test_labels.numpy()
+y_test = y_test[:test_size]
 for AE in models:
-    encoder = torch.nn.Sequential(
-        AE.enc_conv1, AE.activation, AE.pool, AE.enc_conv2,
-        AE.activation, AE.pool, AE.enc_fully_connected
-    )
-    encoded_train = encoder(mnist_train)
-    encoded_test = encoder(mnist_test)
-    X_train = encoded_train.data.numpy() / 255  # convert to numpy and normalize
-    X_train = np.pad(X_train, ((0, 0), (2, 2), (2, 2)), 'constant', constant_values=0)  # pad to 32 x 32
-    X_test = encoded_test.data.numpy() / 255
-    X_test = np.pad(X_test, ((0, 0), (2, 2), (2, 2)), 'constant', constant_values=0)
-    classifier.fit(X_train, y_train)
-    y_pred = classifier.predict(X_test)
-    accuracies.append(accuracy_score(y_test, y_pred))
+    print(f"AE with 8x{AE.latent_dim} latent dim...")
+    decoded_train = torch.squeeze(AE(X_train)).detach().numpy()
+    decoded_test = torch.squeeze(AE(X_test)).detach().numpy()
+    # decoded_train = torch.squeeze(X_train).detach().numpy()
+    # decoded_test = torch.squeeze(X_test).detach().numpy()
+    decoded_train = decoded_train.reshape(decoded_train.shape[0], decoded_train.shape[1] * decoded_train.shape[2])
+    decoded_test = decoded_test.reshape(decoded_test.shape[0], decoded_test.shape[1] * decoded_test.shape[2])
+
+    classifier.fit(decoded_train, y_train)
+    y_pred = classifier.predict(decoded_test)
+    acc = accuracy_score(y_test, y_pred)
+    accuracies.append(acc)
+    print(acc)
+
+print(accuracies)
+# %% plotting the accuracy rates
+acc_vals = accuracies
+x_vals = ["8x1", "8x2", "8x3", "8x4", "8x6", "8x7"]
+plt.grid(color='gray', linestyle='dashed')
+plt.bar(x_vals, acc_vals, width=0.5, color=["rosybrown", "lightcoral", "indianred", "brown", "firebrick", "maroon"])
+plt.ylim([0.84, 0.933])
+plt.xlabel("Dimension of FC layer (latent dim)")
+plt.ylabel("Accuracy")
+plt.title("SVM Accuracy as a function of the latent dimension")
+plt.savefig("Accuracy as a function of the latent dimension")
+plt.show()
