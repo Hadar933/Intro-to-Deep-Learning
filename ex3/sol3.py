@@ -71,129 +71,129 @@ learning_rate = 0.001
 models = [AutoEncoder(d) for d in range(1, 9)]
 criterion = nn.MSELoss()
 # %% test train iterations
-train_loss_arr, test_loss_arr = [], []
-train_size, test_size = len(train_loader), len(test_loader)
-for AE in models:
-    print(f"##### AE with latent dim = {8 * AE.latent_dim} #####")
-    optimizer = torch.optim.Adam(AE.parameters(), lr=learning_rate)
-
-    for epoch in range(num_epochs):
-        cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
-
-        print(f"Epoch [{epoch + 1}/{num_epochs}]")
-        train_loss, test_loss = 0, 0
-        # TRAIN
-        for train_batch in train_loader:  # train batch
-            optimizer.zero_grad()
-            train_images = train_batch[0] / 255  # we dont need the labels for now, also we normalize
-            train_images = train_images.to(device)
-            cur_train_batch += 1
-            if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
-            out = AE(train_images)
-            loss = criterion(out, train_images)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-
-        # TEST
-        with torch.no_grad():
-            for test_batch in test_loader:  # test batch
-                test_images = test_batch[0] / 255
-                test_images = test_images.to(device)
-                cur_test_batch += 1
-                if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
-                out = AE(test_images)
-                loss = criterion(out, test_images)
-                test_loss += loss.item()
-
-        train_loss = train_loss / train_size
-        test_loss = test_loss / test_size
-        AE.train_loss_arr.append(train_loss)
-        AE.test_loss_arr.append(test_loss)
-
-        print(
-            f"Train Loss: {train_loss:.4f}, "
-            f"Test Loss: {test_loss:.4f}, "
-        )
+# train_loss_arr, test_loss_arr = [], []
+# train_size, test_size = len(train_loader), len(test_loader)
+# for AE in models:
+#     print(f"##### AE with latent dim = {8 * AE.latent_dim} #####")
+#     optimizer = torch.optim.Adam(AE.parameters(), lr=learning_rate)
+#
+#     for epoch in range(num_epochs):
+#         cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
+#
+#         print(f"Epoch [{epoch + 1}/{num_epochs}]")
+#         train_loss, test_loss = 0, 0
+#         # TRAIN
+#         for train_batch in train_loader:  # train batch
+#             optimizer.zero_grad()
+#             train_images = train_batch[0] / 255  # we dont need the labels for now, also we normalize
+#             train_images = train_images.to(device)
+#             cur_train_batch += 1
+#             if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
+#             out = AE(train_images)
+#             loss = criterion(out, train_images)
+#             loss.backward()
+#             optimizer.step()
+#             train_loss += loss.item()
+#
+#         # TEST
+#         with torch.no_grad():
+#             for test_batch in test_loader:  # test batch
+#                 test_images = test_batch[0] / 255
+#                 test_images = test_images.to(device)
+#                 cur_test_batch += 1
+#                 if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
+#                 out = AE(test_images)
+#                 loss = criterion(out, test_images)
+#                 test_loss += loss.item()
+#
+#         train_loss = train_loss / train_size
+#         test_loss = test_loss / test_size
+#         AE.train_loss_arr.append(train_loss)
+#         AE.test_loss_arr.append(test_loss)
+#
+#         print(
+#             f"Train Loss: {train_loss:.4f}, "
+#             f"Test Loss: {test_loss:.4f}, "
+#         )
 # %% plotting loss
-for AE in models:
-    plt.plot(AE.train_loss_arr)
-plt.title("Train Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
-plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
-plt.xlim([0, 10])
-plt.grid()
-plt.savefig("Train Loss - AutoEncoder")
-plt.show()
-for AE in models:
-    plt.plot(AE.test_loss_arr)
-plt.title("Test Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
-plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
-plt.xlim([0, 10])
-plt.grid()
-plt.savefig("Test Loss - AutoEncoder")
-plt.show()
+# for AE in models:
+#     plt.plot(AE.train_loss_arr)
+# plt.title("Train Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
+# plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
+# plt.xlim([0, 10])
+# plt.grid()
+# plt.savefig("Train Loss - AutoEncoder")
+# plt.show()
+# for AE in models:
+#     plt.plot(AE.test_loss_arr)
+# plt.title("Test Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
+# plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
+# plt.xlim([0, 10])
+# plt.grid()
+# plt.savefig("Test Loss - AutoEncoder")
+# plt.show()
 # %% visual comparison of a single sample
-
-im = torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float()
-fig, axs = plt.subplots(1, 9)
-plt.figure(figsize=(8, 2), dpi=80)
-axs[0].imshow(im[0][0].detach().numpy() / 255, cmap="gray")
-axs[0].set_title("original")
-for pos, AE in enumerate(models):
-    out = AE(torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float())
-    axs[pos + 1].imshow(out[0][0].detach().numpy(), cmap="gray")
-    axs[pos + 1].set_title(f"8x{AE.latent_dim}")
-fig.savefig("Original vs Reconstructed image for various AEs")
-plt.show()
+#
+# im = torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float()
+# fig, axs = plt.subplots(1, 9)
+# plt.figure(figsize=(8, 2), dpi=80)
+# axs[0].imshow(im[0][0].detach().numpy() / 255, cmap="gray")
+# axs[0].set_title("original")
+# for pos, AE in enumerate(models):
+#     y_pred = AE(torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float())
+#     axs[pos + 1].imshow(y_pred[0][0].detach().numpy(), cmap="gray")
+#     axs[pos + 1].set_title(f"8x{AE.latent_dim}")
+# fig.savefig("Original vs Reconstructed image for various AEs")
+# plt.show()
 
 # %% plotting reconstruction for various examples
-test_iter = iter(test_loader)
-images = test_iter.next()[0]
-images = images[:6, :, :, :] / 255  # taking 6 examples and normalizing
-out = AE(images)
-images = torch.squeeze(images)
-out = torch.squeeze(out)
-im_to_plot = [images[i, :, :].detach().numpy() for i in range(6)]
-out_to_plot = [out[i, :, :].detach().numpy() for i in range(6)]
-fig = plt.figure()  # plots the re-constucted example
-fig.suptitle(f"Reconstruction of 6 examples (from the Test set)")
-for j in range(6):
-    plt.subplot(2, 6, j + 1)
-    plt.imshow(im_to_plot[j], cmap="gray")
-    plt.subplot(2, 6, j + 7)
-    plt.imshow(out_to_plot[j], cmap="gray")
-# plt.savefig("Reconstruction of 6 examples (from the Test set)")
-plt.show()
+# test_iter = iter(test_loader)
+# images = test_iter.next()[0]
+# images = images[:6, :, :, :] / 255  # taking 6 examples and normalizing
+# y_pred = AE(images)
+# images = torch.squeeze(images)
+# y_pred = torch.squeeze(y_pred)
+# im_to_plot = [images[i, :, :].detach().numpy() for i in range(6)]
+# out_to_plot = [y_pred[i, :, :].detach().numpy() for i in range(6)]
+# fig = plt.figure()  # plots the re-constucted example
+# fig.suptitle(f"Reconstruction of 6 examples (from the Test set)")
+# for j in range(6):
+#     plt.subplot(2, 6, j + 1)
+#     plt.imshow(im_to_plot[j], cmap="gray")
+#     plt.subplot(2, 6, j + 7)
+#     plt.imshow(out_to_plot[j], cmap="gray")
+# # plt.savefig("Reconstruction of 6 examples (from the Test set)")
+# plt.show()
 # %% using SVM as a basic classifier, we compare the accuracy rates for every model
 # classifier = svm.SVC(decision_function_shape='ovo')
 padder = transforms.Pad(2)
-train_size = 4200  # using only a fraction of the actual train size, as this is sufficient in the training process
-test_size = train_size // 6  # dividing by 6 to remain in the original train/test ratio
-accuracies = []
-X_train = padder(torch.unsqueeze(mnist_train.data, 1)) / 255
-X_train = X_train[:train_size, :, :, :]
-X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
-X_test = X_test[:test_size, :, :, :]
-y_train = mnist_train.train_labels.numpy()
-y_train = y_train[:train_size]
-y_test = mnist_test.test_labels.numpy()
-y_test = y_test[:test_size]
-for AE in models:
-    print(f"AE with 8x{AE.latent_dim} latent dim...")
-    decoded_train = torch.squeeze(AE(X_train)).detach().numpy()
-    decoded_test = torch.squeeze(AE(X_test)).detach().numpy()
-    # decoded_train = torch.squeeze(X_train).detach().numpy()
-    # decoded_test = torch.squeeze(X_test).detach().numpy()
-    decoded_train = decoded_train.reshape(decoded_train.shape[0], decoded_train.shape[1] * decoded_train.shape[2])
-    decoded_test = decoded_test.reshape(decoded_test.shape[0], decoded_test.shape[1] * decoded_test.shape[2])
-
-    classifier.fit(decoded_train, y_train)
-    y_pred = classifier.predict(decoded_test)
-    acc = accuracy_score(y_test, y_pred)
-    accuracies.append(acc)
-    print(acc)
-
-print(accuracies)
+# train_size = 4200  # using only a fraction of the actual train size, as this is sufficient in the training process
+# test_size = train_size // 6  # dividing by 6 to remain in the original train/test ratio
+# accuracies = []
+# X_train = padder(torch.unsqueeze(mnist_train.data, 1)) / 255
+# X_train = X_train[:train_size, :, :, :]
+# X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
+# X_test = X_test[:test_size, :, :, :]
+# y_train = mnist_train.train_labels.numpy()
+# y_train = y_train[:train_size]
+# y_test = mnist_test.test_labels.numpy()
+# y_test = y_test[:test_size]
+# for AE in models:
+#     print(f"AE with 8x{AE.latent_dim} latent dim...")
+#     decoded_train = torch.squeeze(AE(X_train)).detach().numpy()
+#     decoded_test = torch.squeeze(AE(X_test)).detach().numpy()
+#     # decoded_train = torch.squeeze(X_train).detach().numpy()
+#     # decoded_test = torch.squeeze(X_test).detach().numpy()
+#     decoded_train = decoded_train.reshape(decoded_train.shape[0], decoded_train.shape[1] * decoded_train.shape[2])
+#     decoded_test = decoded_test.reshape(decoded_test.shape[0], decoded_test.shape[1] * decoded_test.shape[2])
+#
+#     classifier.fit(decoded_train, y_train)
+#     y_pred = classifier.predict(decoded_test)
+#     acc = accuracy_score(y_test, y_pred)
+#     accuracies.append(acc)
+#     print(acc)
+#
+# print(accuracies)
 # %% plotting the accuracy rates
 # acc_vals = accuracies
 # x_vals = ["8x1", "8x2", "8x3", "8x4", "8x6", "8x7"]
@@ -206,38 +206,113 @@ print(accuracies)
 # plt.savefig("Accuracy as a function of the latent dimension")
 # plt.show()
 # %% PEARSON correlation of the latent space vector
-X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
-pearson_arr = []
-for model in models:
-    print(model.latent_dim)
-    encoder = torch.nn.Sequential(
-        model.enc_conv1,
-        model.activation,
-        model.pool,
-        model.enc_conv2,
-        model.activation,
-        model.pool,
-        model.enc_fully_connected
-    )
-    encoded_test = encoder(X_test)
-    encoded_test = torch.flatten(encoded_test, 1)
-    print(encoded_test)
-    pearson = torch.corrcoef(encoded_test.T)
-    total_pearson = torch.mean(pearson) / 2  # dividing by 2 because pearson is symmetric
-    pearson_arr.append(total_pearson.item())
+# X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
+# pearson_arr = []
+# for trained_AE_model in models:
+#     print(trained_AE_model.latent_dim)
+#     encoder = torch.nn.Sequential(
+#         trained_AE_model.enc_conv1,
+#         trained_AE_model.activation,
+#         trained_AE_model.pool,
+#         trained_AE_model.enc_conv2,
+#         trained_AE_model.activation,
+#         trained_AE_model.pool,
+#         trained_AE_model.enc_fully_connected
+#     )
+#     encoded_test = encoder(X_test)
+#     encoded_test = torch.flatten(encoded_test, 1)
+#     print(encoded_test)
+#     pearson = torch.corrcoef(encoded_test.T)
+#     total_pearson = torch.mean(pearson) / 2  # dividing by 2 because pearson is symmetric
+#     pearson_arr.append(total_pearson.item())
 # %% plotting pearson vs dim:
-x_data = ["8x3", "8x4", "8x5", "8x6", "8x8"]
-y_data = [0.0184016, 0.0052582, 0.0037022, 0.0030080, 0.0004629]
-fig, ax = plt.subplots()
-ax.plot(x_data, y_data)
-for i, txt in enumerate(y_data):
-    ax.annotate(f"{100 * txt:.4}", (i, y_data[i]))
-plt.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
-plt.title("Pearson decay for increasingly larger latent dim")
-plt.xlim([0, 4])
-plt.ylim([0, 0.019])
-plt.grid()
-plt.savefig("Pearson decay for increasingly larger latent dim")
-plt.show()
-#%% Transfer Learning
+# x_data = ["8x3", "8x4", "8x5", "8x6", "8x8"]
+# y_data = [0.0184016, 0.0052582, 0.0037022, 0.0030080, 0.0004629]
+# fig, ax = plt.subplots()
+# ax.plot(x_data, y_data)
+# for i, txt in enumerate(y_data):
+#     ax.annotate(f"{100 * txt:.4}", (i, y_data[i]))
+# plt.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+# plt.title("Pearson decay for increasingly larger latent dim")
+# plt.xlim([0, 4])
+# plt.ylim([0, 0.019])
+# plt.grid()
+# plt.savefig("Pearson decay for increasingly larger latent dim")
+# plt.show()
 
+# %% Transfer Learning - first part : training only the MLP addition
+pretrained_AE = models[2]
+for param in pretrained_AE.parameters():
+    param.requires_grad = False
+fc1_out_dim, fc2_out_dim = 100, 100  # to experiment with
+
+
+class Transfer(nn.Module):
+    def __init__(self):
+        super(Transfer, self).__init__()
+        self.pretrained_encoder = torch.nn.Sequential(
+            pretrained_AE.enc_conv1, pretrained_AE.activation, pretrained_AE.pool,
+            pretrained_AE.enc_conv2, pretrained_AE.activation, pretrained_AE.pool,
+            pretrained_AE.enc_fully_connected
+        )
+        self.flat = nn.Flatten()
+        self.softmax = nn.Softmax()
+        self.fc1 = nn.Linear(96, fc1_out_dim)
+        self.fc2 = nn.Linear(fc1_out_dim, fc2_out_dim)
+        self.fc3 = nn.Linear(fc2_out_dim, 10)  # 10 output neurons as for 10 classes of MNIST
+
+    def forward(self, im):
+        im = self.pretrained_encoder(im)
+        im = self.flat(im)
+        im = self.fc1(im)
+        im = self.fc2(im)
+        im = self.fc3(im)
+        im = self.softmax(im)
+        return im
+
+
+# %% train test iteration for the Transform model
+Transfer_model = Transfer()
+train_loss_arr, test_loss_arr = [], []
+train_size, test_size = len(train_loader), len(test_loader)
+optimizer = torch.optim.Adam(Transfer_model.parameters(), lr=learning_rate)
+
+for epoch in range(num_epochs):
+    cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
+
+    print(f"Epoch [{epoch + 1}/{num_epochs}]")
+    train_loss, test_loss = 0, 0
+    # TRAIN
+    for X_train, y_train in train_loader:  # train batch
+        # X_train, y_train = X_train.to(device), y_train.to(device)
+        optimizer.zero_grad()
+        X_train = X_train.float() / 255
+        cur_train_batch += 1
+        if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
+        y_pred = Transfer_model(X_train)
+        y_pred = torch.argmax(y_pred, 1)
+        # loss = criterion(y_pred.to(torch.float32), y_train.to(torch.float32)) # TODO: doesnt work
+        loss = criterion(y_pred, y_train)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item()
+
+    # TEST
+    with torch.no_grad():
+        for X_test, y_test in test_loader:  # test batch
+            # X_test, y_test = X_test.to(device), y_test.to(device)
+            X_test = X_test.float() / 255
+            cur_test_batch += 1
+            if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
+            y_pred = Transfer_model(X_test)
+            y_pred = torch.argmax(y_pred, 1)
+            loss = criterion(y_pred, y_test)
+            test_loss += loss.item()
+
+    train_loss = train_loss / train_size
+    test_loss = test_loss / test_size
+
+    print(
+        f"Train Loss: {train_loss:.4f}, "
+        f"Test Loss: {test_loss:.4f}, "
+    )
