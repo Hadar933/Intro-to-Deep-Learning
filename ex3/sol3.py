@@ -72,7 +72,6 @@ models = [AutoEncoder(d) for d in range(1, 9)]
 criterion = nn.MSELoss()
 # %% test train iterations
 train_loss_arr, test_loss_arr = [], []
-# train_accuracy_arr, test_accuracy_arr = [0], [0]
 train_size, test_size = len(train_loader), len(test_loader)
 for AE in models:
     print(f"##### AE with latent dim = {8 * AE.latent_dim} #####")
@@ -166,10 +165,10 @@ for j in range(6):
 # plt.savefig("Reconstruction of 6 examples (from the Test set)")
 plt.show()
 # %% using SVM as a basic classifier, we compare the accuracy rates for every model
-classifier = svm.SVC(decision_function_shape='ovo')
+# classifier = svm.SVC(decision_function_shape='ovo')
 padder = transforms.Pad(2)
-train_size = 4200
-test_size = train_size // 6
+train_size = 4200  # using only a fraction of the actual train size, as this is sufficient in the training process
+test_size = train_size // 6  # dividing by 6 to remain in the original train/test ratio
 accuracies = []
 X_train = padder(torch.unsqueeze(mnist_train.data, 1)) / 255
 X_train = X_train[:train_size, :, :, :]
@@ -196,13 +195,49 @@ for AE in models:
 
 print(accuracies)
 # %% plotting the accuracy rates
-acc_vals = accuracies
-x_vals = ["8x1", "8x2", "8x3", "8x4", "8x6", "8x7"]
-plt.grid(color='gray', linestyle='dashed')
-plt.bar(x_vals, acc_vals, width=0.5, color=["rosybrown", "lightcoral", "indianred", "brown", "firebrick", "maroon"])
-plt.ylim([0.84, 0.933])
-plt.xlabel("Dimension of FC layer (latent dim)")
-plt.ylabel("Accuracy")
-plt.title("SVM Accuracy as a function of the latent dimension")
-plt.savefig("Accuracy as a function of the latent dimension")
+# acc_vals = accuracies
+# x_vals = ["8x1", "8x2", "8x3", "8x4", "8x6", "8x7"]
+# plt.grid(color='gray', linestyle='dashed')
+# plt.bar(x_vals, acc_vals, width=0.5, color=["rosybrown", "lightcoral", "indianred", "brown", "firebrick", "maroon"])
+# plt.ylim([0.84, 0.933])
+# plt.xlabel("Dimension of FC layer (latent dim)")
+# plt.ylabel("Accuracy")
+# plt.title("SVM Accuracy as a function of the latent dimension")
+# plt.savefig("Accuracy as a function of the latent dimension")
+# plt.show()
+# %% PEARSON correlation of the latent space vector
+X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
+pearson_arr = []
+for model in models:
+    print(model.latent_dim)
+    encoder = torch.nn.Sequential(
+        model.enc_conv1,
+        model.activation,
+        model.pool,
+        model.enc_conv2,
+        model.activation,
+        model.pool,
+        model.enc_fully_connected
+    )
+    encoded_test = encoder(X_test)
+    encoded_test = torch.flatten(encoded_test, 1)
+    print(encoded_test)
+    pearson = torch.corrcoef(encoded_test.T)
+    total_pearson = torch.mean(pearson) / 2  # dividing by 2 because pearson is symmetric
+    pearson_arr.append(total_pearson.item())
+# %% plotting pearson vs dim:
+x_data = ["8x3", "8x4", "8x5", "8x6", "8x8"]
+y_data = [0.0184016, 0.0052582, 0.0037022, 0.0030080, 0.0004629]
+fig, ax = plt.subplots()
+ax.plot(x_data, y_data)
+for i, txt in enumerate(y_data):
+    ax.annotate(f"{100 * txt:.4}", (i, y_data[i]))
+plt.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+plt.title("Pearson decay for increasingly larger latent dim")
+plt.xlim([0, 4])
+plt.ylim([0, 0.019])
+plt.grid()
+plt.savefig("Pearson decay for increasingly larger latent dim")
 plt.show()
+#%% Transfer Learning
+
