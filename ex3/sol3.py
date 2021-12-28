@@ -242,27 +242,41 @@ padder = transforms.Pad(2)
 
 # %% Transfer Learning - first part : training only the MLP addition
 pretrained_AE = models[2]
-for param in pretrained_AE.parameters():
-    param.requires_grad = False
 fc1_out_dim, fc2_out_dim = 100, 100  # to experiment with
 
 
 class Transfer(nn.Module):
-    def __init__(self):
+    def __init__(self, train_encoder=False):
         super(Transfer, self).__init__()
-        self.pretrained_encoder = torch.nn.Sequential(
-            pretrained_AE.enc_conv1, pretrained_AE.activation, pretrained_AE.pool,
-            pretrained_AE.enc_conv2, pretrained_AE.activation, pretrained_AE.pool,
-            pretrained_AE.enc_fully_connected
-        )
+        # utility layers:
         self.flat = nn.Flatten()
         self.softmax = nn.Softmax()
+        self.activation = nn.ReLU()
+        self.pool = pretrained_AE.pool
+        # decoder pre-trained layers:
+        self.enc_conv1 = pretrained_AE.enc_conv1
+        self.enc_conv2 = pretrained_AE.enc_conv2
+        self.enc_fc = pretrained_AE.enc_fully_connected
+        # additional MLP layers:
         self.fc1 = nn.Linear(96, fc1_out_dim)
         self.fc2 = nn.Linear(fc1_out_dim, fc2_out_dim)
         self.fc3 = nn.Linear(fc2_out_dim, 10)  # 10 output neurons as for 10 classes of MNIST
+        if train_encoder:
+            self.enc_conv1.requires_grad_(True)
+            self.enc_conv2.requires_grad_(True)
+            self.enc_fc.requires_grad_(True)
+        self.fc1.requires_grad_(True)
+        self.fc2.requires_grad_(True)
+        self.fc3.requires_grad_(True)
 
     def forward(self, im):
-        im = self.pretrained_encoder(im)
+        # encoding:
+        im = self.activation(self.enc_conv1(im))
+        im = self.pool(im)
+        im = self.activation(self.enc_conv2(im))
+        im = self.pool(im)
+        im = self.enc_fc(im)
+        # passing through MLP:
         im = self.flat(im)
         im = self.fc1(im)
         im = self.fc2(im)
@@ -291,7 +305,7 @@ for epoch in range(num_epochs):
         if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
         y_pred = Transfer_model(X_train)
         y_pred = torch.argmax(y_pred, 1)
-        # loss = criterion(y_pred.to(torch.float32), y_train.to(torch.float32)) # TODO: doesnt work
+        # loss = criterion(y_pred.to(torch.float32), y_train.to(torch.float32)) # TODO: y_pred and y_train dont have grad
         loss = criterion(y_pred, y_train)
         loss.backward()
         optimizer.step()
