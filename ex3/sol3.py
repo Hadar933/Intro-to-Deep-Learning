@@ -296,7 +296,6 @@ class Transfer(nn.Module):
 
 # %% train test iteration for the Transform model using SMALL train size
 two_models = [Transfer(True), Transfer(False)]
-# %%
 for Transfer_model in two_models:
     print(f"Training Encoder?: {Transfer_model.train_encoder}.")
     train_loss_arr, test_loss_arr = [], []
@@ -354,3 +353,4 @@ plt.legend([f"Train {cond}", f"Test {cond}"])
 plt.grid()
 plt.savefig(f"Train-Test Loss - {cond} Encoder weights")
 plt.show()
+# %% GAN implementation
