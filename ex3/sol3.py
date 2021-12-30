@@ -353,4 +353,37 @@ plt.legend([f"Train {cond}", f"Test {cond}"])
 plt.grid()
 plt.savefig(f"Train-Test Loss - {cond} Encoder weights")
 plt.show()
+
+
 # %% GAN implementation
+class Generator(nn.Module):
+    def __init__(self, latent_dim, hidden_layer_in_size, hidden_layer_out_size):
+        super(Generator, self).__init__()
+        self.leakyReLU = nn.LeakyReLU()
+        self.fc1 = nn.Linear(hidden_layer_in_size, hidden_layer_out_size)
+        self.fc2 = nn.Linear(hidden_layer_out_size, latent_dim)
+
+    def forward(self, im):
+        im = self.leakyReLU(self.fc1(im))
+        im = self.fc2(im)
+        im = self.softmax(im)
+        return im
+
+
+class Discriminator(nn.Module):
+    def __init__(self, latent_dim, hidden_layer_out_size):
+        """
+        :param latent_dim: input dimension
+        :param hidden_layer_out_size: output of the (single) hidden layer
+        """
+        super(Discriminator, self).__init__()
+        self.softmax = nn.Softmax(dim=1)
+        self.leakyReLU = nn.LeakyReLU()
+        self.fc1 = nn.Linear(latent_dim, hidden_layer_out_size)
+        self.fc2 = nn.Linear(hidden_layer_out_size, 1)  # output a scalar
+
+    def forward(self, im):
+        im = self.leakyReLU(self.fc1(im))
+        im = self.fc2(im)
+        im = self.softmax(im)
+        return im
