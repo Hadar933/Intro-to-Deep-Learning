@@ -5,14 +5,16 @@ import torchvision.transforms as transforms
 from matplotlib import pyplot as plt
 import torchvision.datasets as datasets
 import random
-from matplotlib.pyplot import figure
 from sklearn import svm
 import numpy as np
 from sklearn.metrics import accuracy_score
+import torchvision.utils as vutils
+import matplotlib.animation as animation
+from IPython.display import HTML, display
 
 # %% loading data
 device = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 30
+BATCH_SIZE = 200
 pad_and_tensorize = transforms.Compose([transforms.Pad(2), transforms.PILToTensor()])
 mnist_train = datasets.MNIST(root='./data', train=True, download=True, transform=pad_and_tensorize)
 mnist_test = datasets.MNIST(root='./data', train=False, download=True, transform=pad_and_tensorize)
@@ -44,7 +46,6 @@ class AutoEncoder(nn.Module):
         # encoder weights: (when padding=1 with kernel=3 the shape stays the same)
         self.enc_conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), padding=(1, 1))
         self.enc_conv2 = nn.Conv2d(in_channels=16, out_channels=4, kernel_size=(3, 3), padding=(1, 1))
-
         self.enc_fully_connected = nn.Linear(8, latent_dim)  # we change latent dim to compare results
         # decoder weights:
         self.dec_fully_connected = nn.Linear(latent_dim, 8)
@@ -68,11 +69,12 @@ class AutoEncoder(nn.Module):
 
 
 # %% Initializers
-num_epochs = 20
+num_epochs = 11
 learning_rate = 0.001
 # models = [AutoEncoder(d) for d in range(1, 9)]
-models = [AutoEncoder(2)]
+models = [AutoEncoder(6)]
 criterion = nn.MSELoss()
+
 # %% test train iterations
 train_loss_arr, test_loss_arr = [], []
 train_size, test_size = len(train_loader), len(test_loader)
@@ -136,18 +138,18 @@ plt.grid()
 # plt.savefig("Test Loss - AutoEncoder")
 plt.show()
 # %% visual comparison of a single sample
-
-im = torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float()
-fig, axs = plt.subplots(1, 9)
-plt.figure(figsize=(8, 2), dpi=80)
-axs[0].imshow(im[0][0].detach().numpy() / 255, cmap="gray")
-axs[0].set_title("original")
-for pos, AE in enumerate(models):
-    y_pred = AE(torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float())
-    axs[pos + 1].imshow(y_pred[0][0].detach().numpy(), cmap="gray")
-    axs[pos + 1].set_title(f"8x{AE.latent_dim}")
-fig.savefig("Original vs Reconstructed image for various AEs")
-plt.show()
+#
+# im = torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float()
+# fig, axs = plt.subplots(1, 9)
+# plt.figure(figsize=(8, 2), dpi=80)
+# axs[0].imshow(im[0][0].detach().numpy() / 255, cmap="gray")
+# axs[0].set_title("original")
+# for pos, AE in enumerate(models):
+#     y_pred = AE(torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float())
+#     axs[pos + 1].imshow(y_pred[0][0].detach().numpy(), cmap="gray")
+#     axs[pos + 1].set_title(f"8x{AE.latent_dim}")
+# fig.savefig("Original vs Reconstructed image for various AEs")
+# plt.show()
 
 # %% plotting reconstruction for various examples
 test_iter = iter(test_loader)
@@ -167,81 +169,81 @@ for j in range(6):
     plt.imshow(out_to_plot[j], cmap="gray")
 # plt.savefig("Reconstruction of 6 examples (from the Test set)")
 plt.show()
-# %% using SVM as a basic classifier, we compare the accuracy rates for every model
-classifier = svm.SVC(decision_function_shape='ovo')
-padder = transforms.Pad(2)
-train_size = 4200  # using only a fraction of the actual train size, as this is sufficient in the training process
-test_size = train_size // 6  # dividing by 6 to remain in the original train/test ratio
-accuracies = []
-X_train = padder(torch.unsqueeze(mnist_train.data, 1)) / 255
-X_train = X_train[:train_size, :, :, :]
-X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
-X_test = X_test[:test_size, :, :, :]
-y_train = mnist_train.train_labels.numpy()
-y_train = y_train[:train_size]
-y_test = mnist_test.test_labels.numpy()
-y_test = y_test[:test_size]
-for AE in models:
-    print(f"AE with 8x{AE.latent_dim} latent dim...")
-    decoded_train = torch.squeeze(AE(X_train)).detach().numpy()
-    decoded_test = torch.squeeze(AE(X_test)).detach().numpy()
-    # decoded_train = torch.squeeze(X_train).detach().numpy()
-    # decoded_test = torch.squeeze(X_test).detach().numpy()
-    decoded_train = decoded_train.reshape(decoded_train.shape[0], decoded_train.shape[1] * decoded_train.shape[2])
-    decoded_test = decoded_test.reshape(decoded_test.shape[0], decoded_test.shape[1] * decoded_test.shape[2])
-
-    classifier.fit(decoded_train, y_train)
-    y_pred = classifier.predict(decoded_test)
-    acc = accuracy_score(y_test, y_pred)
-    accuracies.append(acc)
-    print(acc)
-
-print(accuracies)
+# # %% using SVM as a basic classifier, we compare the accuracy rates for every model
+# classifier = svm.SVC(decision_function_shape='ovo')
+# padder = transforms.Pad(2)
+# train_size = 4200  # using only a fraction of the actual train size, as this is sufficient in the training process
+# test_size = train_size // 6  # dividing by 6 to remain in the original train/test ratio
+# accuracies = []
+# X_train = padder(torch.unsqueeze(mnist_train.data, 1)) / 255
+# X_train = X_train[:train_size, :, :, :]
+# X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
+# X_test = X_test[:test_size, :, :, :]
+# y_train = mnist_train.train_labels.numpy()
+# y_train = y_train[:train_size]
+# y_test = mnist_test.test_labels.numpy()
+# y_test = y_test[:test_size]
+# for AE in models:
+#     print(f"AE with 8x{AE.latent_dim} latent dim...")
+#     decoded_train = torch.squeeze(AE(X_train)).detach().numpy()
+#     decoded_test = torch.squeeze(AE(X_test)).detach().numpy()
+#     # decoded_train = torch.squeeze(X_train).detach().numpy()
+#     # decoded_test = torch.squeeze(X_test).detach().numpy()
+#     decoded_train = decoded_train.reshape(decoded_train.shape[0], decoded_train.shape[1] * decoded_train.shape[2])
+#     decoded_test = decoded_test.reshape(decoded_test.shape[0], decoded_test.shape[1] * decoded_test.shape[2])
+#
+#     classifier.fit(decoded_train, y_train)
+#     y_pred = classifier.predict(decoded_test)
+#     acc = accuracy_score(y_test, y_pred)
+#     accuracies.append(acc)
+#     print(acc)
+#
+# print(accuracies)
 # %% plotting the SVM accuracy rates
-acc_vals = accuracies
-x_vals = ["8x1", "8x2", "8x3", "8x4", "8x6", "8x7"]
-plt.grid(color='gray', linestyle='dashed')
-plt.bar(x_vals, acc_vals, width=0.5, color=["rosybrown", "lightcoral", "indianred", "brown", "firebrick", "maroon"])
-plt.ylim([0.84, 0.933])
-plt.xlabel("Dimension of FC layer (latent dim)")
-plt.ylabel("Accuracy")
-plt.title("SVM Accuracy as a function of the latent dimension")
-plt.savefig("Accuracy as a function of the latent dimension")
-plt.show()
-# %% Pearson correlation
-X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
-pearson_arr = []
-for trained_AE_model in models:
-    print(trained_AE_model.latent_dim)
-    encoder = torch.nn.Sequential(
-        trained_AE_model.enc_conv1,
-        trained_AE_model.activation,
-        trained_AE_model.pool,
-        trained_AE_model.enc_conv2,
-        trained_AE_model.activation,
-        trained_AE_model.pool,
-        trained_AE_model.enc_fully_connected
-    )
-    encoded_test = encoder(X_test)
-    encoded_test = torch.flatten(encoded_test, 1)
-    print(encoded_test)
-    pearson = torch.corrcoef(encoded_test.T)
-    total_pearson = torch.mean(pearson) / 2  # dividing by 2 because pearson is symmetric
-    pearson_arr.append(total_pearson.item())
+# acc_vals = accuracies
+# x_vals = ["8x1", "8x2", "8x3", "8x4", "8x6", "8x7"]
+# plt.grid(color='gray', linestyle='dashed')
+# plt.bar(x_vals, acc_vals, width=0.5, color=["rosybrown", "lightcoral", "indianred", "brown", "firebrick", "maroon"])
+# plt.ylim([0.84, 0.933])
+# plt.xlabel("Dimension of FC layer (latent dim)")
+# plt.ylabel("Accuracy")
+# plt.title("SVM Accuracy as a function of the latent dimension")
+# plt.savefig("Accuracy as a function of the latent dimension")
+# plt.show()
+# # %% Pearson correlation
+# X_test = padder(torch.unsqueeze(mnist_test.data, 1)) / 255
+# pearson_arr = []
+# for trained_AE_model in models:
+#     print(trained_AE_model.latent_dim)
+#     encoder = torch.nn.Sequential(
+#         trained_AE_model.enc_conv1,
+#         trained_AE_model.activation,
+#         trained_AE_model.pool,
+#         trained_AE_model.enc_conv2,
+#         trained_AE_model.activation,
+#         trained_AE_model.pool,
+#         trained_AE_model.enc_fully_connected
+#     )
+#     encoded_test = encoder(X_test)
+#     encoded_test = torch.flatten(encoded_test, 1)
+#     print(encoded_test)
+#     pearson = torch.corrcoef(encoded_test.T)
+#     total_pearson = torch.mean(pearson) / 2  # dividing by 2 because pearson is symmetric
+#     pearson_arr.append(total_pearson.item())
 # %% plotting pearson vs dim:
-x_data = ["8x3", "8x4", "8x5", "8x6", "8x8"]
-y_data = [0.0184016, 0.0052582, 0.0037022, 0.0030080, 0.0004629]
-fig, ax = plt.subplots()
-ax.plot(x_data, y_data)
-for i, txt in enumerate(y_data):
-    ax.annotate(f"{100 * txt:.4}", (i, y_data[i]))
-plt.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
-plt.title("Pearson decay for increasingly larger latent dim")
-plt.xlim([0, 4])
-plt.ylim([0, 0.019])
-plt.grid()
-plt.savefig("Pearson decay for increasingly larger latent dim")
-plt.show()
+# x_data = ["8x3", "8x4", "8x5", "8x6", "8x8"]
+# y_data = [0.0184016, 0.0052582, 0.0037022, 0.0030080, 0.0004629]
+# fig, ax = plt.subplots()
+# ax.plot(x_data, y_data)
+# for i, txt in enumerate(y_data):
+#     ax.annotate(f"{100 * txt:.4}", (i, y_data[i]))
+# plt.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+# plt.title("Pearson decay for increasingly larger latent dim")
+# plt.xlim([0, 4])
+# plt.ylim([0, 0.019])
+# plt.grid()
+# plt.savefig("Pearson decay for increasingly larger latent dim")
+# plt.show()
 
 # %% Transfer Learning - first part : training only the MLP addition
 pretrained_AE = models[0]
@@ -294,96 +296,219 @@ class Transfer(nn.Module):
         return im
 
 
-# %% train test iteration for the Transform model using SMALL train size
-two_models = [Transfer(True), Transfer(False)]
-for Transfer_model in two_models:
-    print(f"Training Encoder?: {Transfer_model.train_encoder}.")
-    train_loss_arr, test_loss_arr = [], []
-    train_size, test_size = len(train_loader), len(test_loader)
-    optimizer = torch.optim.Adam(Transfer_model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss()
-    for epoch in range(num_epochs):
-        cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
-        print(f"Epoch [{epoch + 1}/{num_epochs}]")
-        train_loss, test_loss = 0, 0
-        # TRAIN (based on a small portion of the train data)
-        batches_used, batches_to_use = 0, 10  # we will use this to only consider small number of train
-        for train_batch in train_loader:  # train batch
-            print(f"batch: [{batches_used}/{batches_to_use}]", end="\r")
-            if batches_used == 10:
-                break
-            else:
-                batches_used += 1
-            X_train, y_train = train_batch
-            optimizer.zero_grad()
-            X_train = X_train.float() / 255
-            y_pred = Transfer_model(X_train)
-            loss = criterion(y_pred, y_train)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-
-        # TEST (based on all the test data)
-        with torch.no_grad():
-            for X_test, y_test in test_loader:  # test batch
-                X_test = X_test.float() / 255
-                cur_test_batch += 1
-                if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
-                y_pred = Transfer_model(X_test)
-                loss = criterion(y_pred, y_test)
-                test_loss += loss.item()
-
-        train_loss = train_loss / batches_to_use
-        test_loss = test_loss / test_size
-        Transfer_model.train_loss_arr.append(train_loss)
-        Transfer_model.test_loss_arr.append(test_loss)
-
-        print(
-            f"Train Loss: {train_loss:.4f}, "
-            f"Test Loss: {test_loss:.4f}, "
-        )
+# # %% train test iteration for the Transform model using SMALL train size
+# two_models = [Transfer(True), Transfer(False)]
+# for Transfer_model in two_models:
+#     print(f"Training Encoder?: {Transfer_model.train_encoder}.")
+#     train_loss_arr, test_loss_arr = [], []
+#     train_size, test_size = len(train_loader), len(test_loader)
+#     optimizer = torch.optim.Adam(Transfer_model.parameters(), lr=learning_rate)
+#     criterion = nn.CrossEntropyLoss()
+#     for epoch in range(num_epochs):
+#         cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
+#         print(f"Epoch [{epoch + 1}/{num_epochs}]")
+#         train_loss, test_loss = 0, 0
+#         # TRAIN (based on a small portion of the train data)
+#         batches_used, batches_to_use = 0, 10  # we will use this to only consider small number of train
+#         for train_batch in train_loader:  # train batch
+#             print(f"batch: [{batches_used}/{batches_to_use}]", end="\r")
+#             if batches_used == 10:
+#                 break
+#             else:
+#                 batches_used += 1
+#             X_train, y_train = train_batch
+#             optimizer.zero_grad()
+#             X_train = X_train.float() / 255
+#             y_pred = Transfer_model(X_train)
+#             loss = criterion(y_pred, y_train)
+#             loss.backward()
+#             optimizer.step()
+#             train_loss += loss.item()
+#
+#         # TEST (based on all the test data)
+#         with torch.no_grad():
+#             for X_test, y_test in test_loader:  # test batch
+#                 X_test = X_test.float() / 255
+#                 cur_test_batch += 1
+#                 if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
+#                 y_pred = Transfer_model(X_test)
+#                 loss = criterion(y_pred, y_test)
+#                 test_loss += loss.item()
+#
+#         train_loss = train_loss / batches_to_use
+#         test_loss = test_loss / test_size
+#         Transfer_model.train_loss_arr.append(train_loss)
+#         Transfer_model.test_loss_arr.append(test_loss)
+#
+#         print(
+#             f"Train Loss: {train_loss:.4f}, "
+#             f"Test Loss: {test_loss:.4f}, "
+#         )
 # %% Plotting train and test loss of the Transformer:
-model = two_models[0]
-plt.plot(model.train_loss_arr)
-plt.plot(model.test_loss_arr)
-cond = '(Freezed)' if model.train_encoder else '(Trained)'
-plt.title(f"Train/Test Loss - {cond} Encoder weights")
-plt.ylabel("Loss"), plt.xlabel("Epochs")
-plt.legend([f"Train {cond}", f"Test {cond}"])
-plt.grid()
-plt.savefig(f"Train-Test Loss - {cond} Encoder weights")
-plt.show()
+# model = two_models[0]
+# plt.plot(model.train_loss_arr)
+# plt.plot(model.test_loss_arr)
+# cond = '(Freezed)' if model.train_encoder else '(Trained)'
+# plt.title(f"Train/Test Loss - {cond} Encoder weights")
+# plt.ylabel("Loss"), plt.xlabel("Epochs")
+# plt.legend([f"Train {cond}", f"Test {cond}"])
+# plt.grid()
+# plt.savefig(f"Train-Test Loss - {cond} Encoder weights")
+# plt.show()
 
 
 # %% GAN implementation
 class Generator(nn.Module):
-    def __init__(self, latent_dim, hidden_layer_in_size, hidden_layer_out_size):
+    def __init__(self):
         super(Generator, self).__init__()
-        self.leakyReLU = nn.LeakyReLU()
-        self.fc1 = nn.Linear(hidden_layer_in_size, hidden_layer_out_size)
-        self.fc2 = nn.Linear(hidden_layer_out_size, latent_dim)
+        self.model = nn.Sequential(
+            nn.Linear(6, 256),
+            nn.LeakyReLU(),
+            nn.BatchNorm2d(4),
+            nn.Linear(256, 256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 6),
+            nn.Tanh(),
+        )
 
     def forward(self, im):
-        im = self.leakyReLU(self.fc1(im))
-        im = self.fc2(im)
-        im = self.softmax(im)
-        return im
+        im = self.model(im)
+        return self.model(im)
 
 
 class Discriminator(nn.Module):
-    def __init__(self, latent_dim, hidden_layer_out_size):
-        """
-        :param latent_dim: input dimension
-        :param hidden_layer_out_size: output of the (single) hidden layer
-        """
+    def __init__(self):
         super(Discriminator, self).__init__()
-        self.softmax = nn.Softmax(dim=1)
-        self.leakyReLU = nn.LeakyReLU()
-        self.fc1 = nn.Linear(latent_dim, hidden_layer_out_size)
-        self.fc2 = nn.Linear(hidden_layer_out_size, 1)  # output a scalar
+        self.model = nn.Sequential(
+            nn.Linear(6, 1),
+            nn.Flatten(),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid(),
+        )
 
     def forward(self, im):
-        im = self.leakyReLU(self.fc1(im))
-        im = self.fc2(im)
-        im = self.softmax(im)
+        im = self.model(im)
         return im
+
+
+# %% Training GAN initializes
+D, G = Discriminator(), Generator()
+criterion = nn.BCELoss()
+learning_rate = 2e-4
+num_epochs = 5
+fixed_noise = torch.randn(BATCH_SIZE, 4, 8, 6)
+real_label = 1.
+fake_label = 0.
+optimizerD = torch.optim.Adam(D.parameters(), lr=learning_rate)
+optimizerG = torch.optim.Adam(G.parameters(), lr=learning_rate)
+encoder = torch.nn.Sequential(
+    pretrained_AE.enc_conv1, pretrained_AE.activation, pretrained_AE.pool,
+    pretrained_AE.enc_conv2, pretrained_AE.activation, pretrained_AE.pool,
+    pretrained_AE.enc_fully_connected
+)
+decoder = torch.nn.Sequential(
+    pretrained_AE.dec_fully_connected,
+    pretrained_AE.dec_conv1,
+    pretrained_AE.activation,
+    pretrained_AE.dec_conv2,
+    pretrained_AE.sigmoid
+)
+# %% Train - test iteration
+img_list = []
+G_losses = []
+D_losses = []
+iters = 0
+for epoch in range(num_epochs):
+    train_D = False
+    for i, data in enumerate(train_loader, 0):  # batches
+        ############################
+        # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+        ###########################
+        # Train with all-real batch
+
+        D.zero_grad()
+        # Format batch
+        real_cpu = encoder(data[0] / 255)  # encode the data first
+        label = torch.full((BATCH_SIZE,), real_label, dtype=torch.float)
+        # Forward pass real batch through D
+        output = D(real_cpu).view(-1)
+        # Calculate loss on all-real batch
+        errD_real = criterion(output, label)
+        # Calculate gradients for D in backward pass
+        errD_real.backward()
+        D_x = output.mean().item()
+
+        # Train with all-fake batch
+        # Generate batch of latent vectors
+        noise = torch.randn(BATCH_SIZE, 4, 8, 6)
+        # Generate fake image batch with G
+        fake = G(noise)
+        label.fill_(fake_label)
+        # Classify all fake batch with D
+        output = D(fake.detach()).view(-1)
+        # Calculate D's loss on the all-fake batch
+        errD_fake = criterion(output, label)
+        # Calculate the gradients for this batch, accumulated (summed) with previous gradients
+        errD_fake.backward()
+        D_G_z1 = output.mean().item()
+        # Compute error of D as sum over the fake and the real batches
+        errD = errD_real + errD_fake
+        # Update D
+        optimizerD.step()
+
+        ############################
+        # (2) Update G network: maximize log(D(G(z)))
+        ###########################
+        G.zero_grad()
+        label.fill_(real_label)  # fake labels are real for generator cost
+        # Since we just updated D, perform another forward pass of all-fake batch through D
+        output = D(fake).view(-1)
+        # Calculate G's loss based on this output
+        errG = criterion(output, label)
+        # Calculate gradients for G
+        errG.backward()
+        D_G_z2 = output.mean().item()
+        # Update G
+        optimizerG.step()
+
+        # Output training stats
+        if i % 50 == 0:
+            print(f"[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
+                  % (epoch, num_epochs, i, len(train_loader),
+                     errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
+
+        # Save Losses for plotting later
+        G_losses.append(errG.item())
+        D_losses.append(errD.item())
+
+        # Check how the generator is doing by saving G's output on fixed_noise
+        if (iters % 50 == 0) or ((epoch == num_epochs - 1) and (i == len(train_loader) - 1)):
+            with torch.no_grad():
+                fake = G(fixed_noise).detach().cpu()
+            # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+            img_list.append(fake)
+        iters += 1
+# %% GAN loss
+plt.figure(figsize=(10, 5))
+plt.title("Generator and Discriminator Loss During Training")
+plt.plot(G_losses, label="G")
+plt.plot(D_losses, label="D")
+plt.xlabel("iterations")
+plt.ylabel("Loss")
+plt.legend()
+plt.show()
+# %% decoding and plotting
+decoded = [decoder(im).detach().numpy() for im in img_list]
+for j in range(len(decoded)):
+    plt.title(f"{j}")
+    plt.imshow(decoded[j][0][0], cmap="gray")
+    plt.show()
+# fig = plt.figure()  # plots the re-constucted example
+# fig.suptitle(f"decoder->generator->encoder")
+# for j in range(len(decoded)):
+#     plt.subplot(3, 7, j + 1)
+#     plt.title(f"{j}")
+#     plt.imshow(decoded[j][0][0], cmap="gray")
+# # plt.savefig("Reconstruction of 6 examples (from the Test set)")
+# plt.show()
