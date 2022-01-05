@@ -9,12 +9,10 @@ from sklearn import svm
 import numpy as np
 from sklearn.metrics import accuracy_score
 import torchvision.utils as vutils
-import matplotlib.animation as animation
-from IPython.display import HTML, display
 
 # %% loading data
 device = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 200
+BATCH_SIZE = 30
 pad_and_tensorize = transforms.Compose([transforms.Pad(2), transforms.PILToTensor()])
 mnist_train = datasets.MNIST(root='./data', train=True, download=True, transform=pad_and_tensorize)
 mnist_test = datasets.MNIST(root='./data', train=False, download=True, transform=pad_and_tensorize)
@@ -41,6 +39,7 @@ class AutoEncoder(nn.Module):
         self.train_loss_arr = []
         self.latent_dim = latent_dim
         self.activation = nn.ReLU()
+        self.flat = nn.Flatten()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.sigmoid = nn.Sigmoid()
         # encoder weights: (when padding=1 with kernel=3 the shape stays the same)
@@ -121,35 +120,35 @@ for AE in models:
             f"Test Loss: {test_loss:.4f}, "
         )
 # %% plotting loss
-for AE in models:
-    plt.plot(AE.train_loss_arr)
-plt.title("Train Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
-plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
-plt.xlim([0, 10])
-plt.grid()
-plt.savefig("Train Loss - AutoEncoder")
-plt.show()
-for AE in models:
-    plt.plot(AE.test_loss_arr)
-plt.title("Test Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
-plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
-plt.xlim([0, 10])
-plt.grid()
-# plt.savefig("Test Loss - AutoEncoder")
-plt.show()
+# for AE in models:
+#     plt.plot(AE.train_loss_arr)
+# plt.title("Train Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
+# plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
+# plt.xlim([0, 10])
+# plt.grid()
+# plt.savefig("Train Loss - AutoEncoder")
+# plt.show()
+# for AE in models:
+#     plt.plot(AE.test_loss_arr)
+# plt.title("Test Loss for various AEs"), plt.xlabel("Epochs"), plt.ylabel("Loss")
+# plt.legend([f"FC 8x{AE.latent_dim}" for AE in models], loc="upper right")
+# plt.xlim([0, 10])
+# plt.grid()
+# # plt.savefig("Test Loss - AutoEncoder")
+# plt.show()
 # %% visual comparison of a single sample
 #
-# im = torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float()
-# fig, axs = plt.subplots(1, 9)
-# plt.figure(figsize=(8, 2), dpi=80)
-# axs[0].imshow(im[0][0].detach().numpy() / 255, cmap="gray")
-# axs[0].set_title("original")
-# for pos, AE in enumerate(models):
-#     y_pred = AE(torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float())
-#     axs[pos + 1].imshow(y_pred[0][0].detach().numpy(), cmap="gray")
-#     axs[pos + 1].set_title(f"8x{AE.latent_dim}")
-# fig.savefig("Original vs Reconstructed image for various AEs")
-# plt.show()
+im = torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float()
+fig, axs = plt.subplots(1, 9)
+plt.figure(figsize=(8, 2), dpi=80)
+axs[0].imshow(im[0][0].detach().numpy() / 255, cmap="gray")
+axs[0].set_title("original")
+for pos, AE in enumerate(models):
+    y_pred = AE(torch.unsqueeze(mnist_test[RAND_SAMPLE][0] / 255, 1).float())
+    axs[pos + 1].imshow(y_pred[0][0].detach().numpy(), cmap="gray")
+    axs[pos + 1].set_title(f"8x{AE.latent_dim}")
+fig.savefig("Original vs Reconstructed image for various AEs")
+plt.show()
 
 # %% plotting reconstruction for various examples
 test_iter = iter(test_loader)
@@ -169,7 +168,7 @@ for j in range(6):
     plt.imshow(out_to_plot[j], cmap="gray")
 # plt.savefig("Reconstruction of 6 examples (from the Test set)")
 plt.show()
-# # %% using SVM as a basic classifier, we compare the accuracy rates for every model
+# %% using SVM as a basic classifier, we compare the accuracy rates for every model
 # classifier = svm.SVC(decision_function_shape='ovo')
 # padder = transforms.Pad(2)
 # train_size = 4200  # using only a fraction of the actual train size, as this is sufficient in the training process
@@ -359,31 +358,40 @@ class Transfer(nn.Module):
 
 # %% GAN implementation
 class Generator(nn.Module):
+    """
+    the generator class performs on random noise and outputs a latent space vector
+    (Same as the encoder)
+    """
+
     def __init__(self):
         super(Generator, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(6, 256),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(4),
-            nn.Linear(256, 256),
-            nn.LeakyReLU(),
-            nn.Linear(256, 6),
-            nn.Tanh(),
+            nn.Conv2d(in_channels=1, out_channels=4, kernel_size=3, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.ReLU(),
+            nn.Linear(16, 12),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
     def forward(self, im):
         im = self.model(im)
-        return self.model(im)
+        return im
 
 
 class Discriminator(nn.Module):
+    """
+    the discriminator class classifies real and fake (outputted from our generator) latent space vectors
+    """
+
     def __init__(self):
         super(Discriminator, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(6, 1),
             nn.Flatten(),
             nn.ReLU(),
-            nn.Linear(32, 1),
+            nn.Linear(192, 6),
+            nn.ReLU(),
+            nn.Linear(6, 1),
             nn.Sigmoid(),
         )
 
@@ -393,11 +401,15 @@ class Discriminator(nn.Module):
 
 
 # %% Training GAN initializes
+# increasing batch size and reinitializing the data loaders
+BATCH_SIZE = 200
+train_loader = torch.utils.data.DataLoader(mnist_train, batch_size=BATCH_SIZE)
+test_loader = torch.utils.data.DataLoader(mnist_test, batch_size=BATCH_SIZE)
 D, G = Discriminator(), Generator()
 criterion = nn.BCELoss()
 learning_rate = 2e-4
 num_epochs = 5
-fixed_noise = torch.randn(BATCH_SIZE, 4, 8, 6)
+fixed_noise = torch.randn(BATCH_SIZE, 1, 32, 32)/255  # will be used as input to G
 real_label = 1.
 fake_label = 0.
 optimizerD = torch.optim.Adam(D.parameters(), lr=learning_rate)
@@ -409,10 +421,8 @@ encoder = torch.nn.Sequential(
 )
 decoder = torch.nn.Sequential(
     pretrained_AE.dec_fully_connected,
-    pretrained_AE.dec_conv1,
-    pretrained_AE.activation,
-    pretrained_AE.dec_conv2,
-    pretrained_AE.sigmoid
+    pretrained_AE.dec_conv1, pretrained_AE.activation,
+    pretrained_AE.dec_conv2, pretrained_AE.sigmoid
 )
 # %% Train - test iteration
 img_list = []
@@ -440,8 +450,7 @@ for epoch in range(num_epochs):
         D_x = output.mean().item()
 
         # Train with all-fake batch
-        # Generate batch of latent vectors
-        noise = torch.randn(BATCH_SIZE, 4, 8, 6)
+        noise = torch.randn(BATCH_SIZE, 1, 32, 32) / 255
         # Generate fake image batch with G
         fake = G(noise)
         label.fill_(fake_label)
@@ -474,20 +483,22 @@ for epoch in range(num_epochs):
 
         # Output training stats
         if i % 50 == 0:
-            print(f"[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
-                  % (epoch, num_epochs, i, len(train_loader),
-                     errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
+            print(f"[{epoch}/{num_epochs}][{i}/{len(train_loader)}]\t"
+                  f"Loss_D: {errD.item():.4}\t"
+                  f"Loss_G:{errG.item():.4}\t"
+                  f"D(x):{D_x:.4}\t"
+                  f"D(G(z)): {D_G_z1:.4} / {D_G_z2:.4}")
 
         # Save Losses for plotting later
         G_losses.append(errG.item())
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        if (iters % 50 == 0) or ((epoch == num_epochs - 1) and (i == len(train_loader) - 1)):
-            with torch.no_grad():
-                fake = G(fixed_noise).detach().cpu()
-            # img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
-            img_list.append(fake)
+        # if (iters % 50 == 0) or ((epoch == num_epochs - 1) and (i == len(train_loader) - 1)):
+        #     with torch.no_grad():
+        #         fake = G(fixed_noise).detach().cpu()
+        #         decoded = decoder(fake)
+        # img_list.append(vutils.make_grid(decoded, padding=2, normalize=True))
         iters += 1
 # %% GAN loss
 plt.figure(figsize=(10, 5))
@@ -498,17 +509,12 @@ plt.xlabel("iterations")
 plt.ylabel("Loss")
 plt.legend()
 plt.show()
-# %% decoding and plotting
-decoded = [decoder(im).detach().numpy() for im in img_list]
-for j in range(len(decoded)):
-    plt.title(f"{j}")
-    plt.imshow(decoded[j][0][0], cmap="gray")
-    plt.show()
-# fig = plt.figure()  # plots the re-constucted example
-# fig.suptitle(f"decoder->generator->encoder")
-# for j in range(len(decoded)):
-#     plt.subplot(3, 7, j + 1)
-#     plt.title(f"{j}")
-#     plt.imshow(decoded[j][0][0], cmap="gray")
-# # plt.savefig("Reconstruction of 6 examples (from the Test set)")
-# plt.show()
+# %% plotting decoded last batch
+fake = G(fixed_noise)
+decoded = decoder(fake)
+decoded_g = decoded[:16, 0, :, :].detach()
+fig = plt.figure()  # plots the re-constucted example
+for j in range(16):
+    plt.subplot(4, 4, j + 1)
+    plt.imshow(decoded_g[j, :, :], cmap="gray")
+plt.show()
