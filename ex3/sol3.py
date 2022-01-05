@@ -447,6 +447,8 @@ train_loss_arr, test_loss_arr = [], []
 train_size, test_size = len(train_loader), len(test_loader)
 num_epochs = 10
 criterion = nn.MSELoss()
+
+
 # %%
 # for epoch in range(num_epochs):
 #     cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
@@ -504,16 +506,22 @@ class Generator(nn.Module):
     def __init__(self, latent_dim):
         super(Generator, self).__init__()
         self.latent_dim = latent_dim
-        self.flatten = nn.Flatten(start_dim=1)
         self.relu = nn.ReLU()
-        self.fc1 = nn.Linear(784, 128)
-        self.fc2 = nn.Linear(128, latent_dim)
+        self.fc1 = nn.Linear(28, 64)
+        self.fc2 = nn.Linear(64, 1)
+        self.flatten = nn.Flatten(start_dim=1)
+        self.fc3 = nn.Linear(28, latent_dim)
+        self.batchNorm = nn.BatchNorm2d(1)
 
     def forward(self, im):
-        im = self.flatten(im)  # dim is (batch_size,28*28=784)
         im = self.fc1(im)
+        im = self.batchNorm(im)
         im = self.relu(im)
         im = self.fc2(im)
+        im = self.batchNorm(im)
+        im = self.relu(im)
+        im = self.flatten(im)  # dim is (batch_size,28*10=280)
+        im = self.fc3(im)
         return im
 
 
@@ -525,15 +533,21 @@ class Discriminator(nn.Module):
     def __init__(self, latent_dim):
         super(Discriminator, self).__init__()
         self.latent_dim = latent_dim
-        self.relu = nn.ReLU()
+        self.leakyRelu = nn.LeakyReLU(0.2)
         self.sigmoid = nn.Sigmoid()
-        self.fc1 = nn.Linear(latent_dim, 32)
-        self.fc2 = nn.Linear(32, 1)
+        self.fc1 = nn.Linear(latent_dim, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, 32)
+        self.fc4 = nn.Linear(32, 1)
 
     def forward(self, im):
         im = self.fc1(im)
-        im = self.relu(im)
+        im = self.leakyRelu(im)
         im = self.fc2(im)
+        im = self.leakyRelu(im)
+        im = self.fc3(im)
+        im = self.leakyRelu(im)
+        im = self.fc4(im)
         im = self.sigmoid(im)
         return im
 
@@ -545,14 +559,14 @@ train_loader = torch.utils.data.DataLoader(mnist_train, batch_size=BATCH_SIZE)
 test_loader = torch.utils.data.DataLoader(mnist_test, batch_size=BATCH_SIZE)
 D, G = Discriminator(latent_dim), Generator(latent_dim)
 criterion = nn.BCELoss()
-num_epochs = 5
+num_epochs = 50
 fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
 real_label, fake_label = 1., 0.
 optimizerD = torch.optim.Adam(D.parameters(), lr=0.0002, betas=(0.5, 0.999))
 optimizerG = torch.optim.Adam(G.parameters(), lr=0.0002, betas=(0.5, 0.999))
-
-# %% Train - test iteration
 img_list, G_losses, D_losses = [], [], []
+generated_by_G = []  # every epoch we add an example
+# %% Train - test iteration
 iters = 0
 for epoch in range(num_epochs):
     for i, data in enumerate(train_loader, 0):  # batches
@@ -618,21 +632,24 @@ for epoch in range(num_epochs):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        # if (iters % 50 == 0) or ((epoch == num_epochs - 1) and (i == len(train_loader) - 1)):
-        #     with torch.no_grad():
-        #         fake = G(fixed_noise).detach().cpu()
-        #         decoded = decoder(fake)
-        # img_list.append(vutils.make_grid(decoded, padding=2, normalize=True))
+        if (iters % 50 == 0) or ((epoch == num_epochs - 1) and (i == len(train_loader) - 1)):
+            with torch.no_grad():
+                fake = G(fixed_noise).detach().cpu()
+                decoded = decoder(fake)
+        img_list.append(vutils.make_grid(decoded, padding=2, normalize=True))
         iters += 1
     # plotting current result:
-    print(f"G's weights: {next(G.parameters())}")
-    print(f"D's weights: {next(D.parameters())}")
     fake = G(fixed_noise)
-    plt.imshow(decoder(fake)[0][0].detach())
-    plt.title(f"epoch {epoch}-Image --> Generator --> decoder:")
-    plt.show()
+    G_then_decoder = decoder(fake)[0][0].detach()
+    generated_by_G.append(G_then_decoder)
+    fig = plt.figure()  # plots the re-constucted example
+    fig.suptitle(f"epoch {epoch}")
+    plt.subplot(1, 2, 1)
+    plt.title(f"after GENERATOR:")
+    plt.imshow(G_then_decoder)
+    plt.subplot(1, 2, 2)
+    plt.title("after ENCODER:")
     plt.imshow(decoder(real_cpu)[0][0].detach())
-    plt.title(f"epoch {epoch}-Image --> Encoder --> decoder:")
     plt.show()
 # %% GAN loss
 plt.figure(figsize=(10, 5))
@@ -643,11 +660,12 @@ plt.xlabel("iterations")
 plt.ylabel("Loss")
 plt.legend()
 plt.show()
-# %% plotting decoded last batch
+# %% plotting decoded
 fake = G(fixed_noise)
 decoded = decoder(fake)
 decoded_g = decoded[:16, 0, :, :].detach()
 fig = plt.figure()  # plots the re-constucted example
+fig.suptitle("Generated from random noise")
 for j in range(16):
     plt.subplot(4, 4, j + 1)
     plt.imshow(decoded_g[j, :, :], cmap="gray")
