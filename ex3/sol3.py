@@ -536,8 +536,8 @@ class Discriminator(nn.Module):
         self.leakyRelu = nn.LeakyReLU(0.2)
         self.sigmoid = nn.Sigmoid()
         self.fc1 = nn.Linear(latent_dim, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 32)
+        self.fc2 = nn.Linear(256, 64)
+        self.fc3 = nn.Linear(64, 32)
         self.fc4 = nn.Linear(32, 1)
 
     def forward(self, im):
@@ -559,7 +559,7 @@ train_loader = torch.utils.data.DataLoader(mnist_train, batch_size=BATCH_SIZE)
 test_loader = torch.utils.data.DataLoader(mnist_test, batch_size=BATCH_SIZE)
 D, G = Discriminator(latent_dim), Generator(latent_dim)
 criterion = nn.BCELoss()
-num_epochs = 50
+num_epochs = 30
 fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
 real_label, fake_label = 1., 0.
 optimizerD = torch.optim.Adam(D.parameters(), lr=0.0002, betas=(0.5, 0.999))
@@ -642,31 +642,48 @@ for epoch in range(num_epochs):
     fake = G(fixed_noise)
     G_then_decoder = decoder(fake)[0][0].detach()
     generated_by_G.append(G_then_decoder)
-    fig = plt.figure()  # plots the re-constucted example
-    fig.suptitle(f"epoch {epoch}")
-    plt.subplot(1, 2, 1)
-    plt.title(f"after GENERATOR:")
+    plt.title(f"after GENERATOR (epoch {epoch})")
     plt.imshow(G_then_decoder)
-    plt.subplot(1, 2, 2)
-    plt.title("after ENCODER:")
-    plt.imshow(decoder(real_cpu)[0][0].detach())
     plt.show()
 # %% GAN loss
 plt.figure(figsize=(10, 5))
-plt.title("Generator and Discriminator Loss During Training")
+plt.title("G & D Training loss")
 plt.plot(G_losses, label="G")
 plt.plot(D_losses, label="D")
 plt.xlabel("iterations")
 plt.ylabel("Loss")
 plt.legend()
+plt.ylim([0.5, 4])
+plt.savefig("GAN train loss")
 plt.show()
 # %% plotting decoded
+fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
 fake = G(fixed_noise)
 decoded = decoder(fake)
-decoded_g = decoded[:16, 0, :, :].detach()
+decoded_g = decoded[:64, 0, :, :].detach()
 fig = plt.figure()  # plots the re-constucted example
-fig.suptitle("Generated from random noise")
-for j in range(16):
-    plt.subplot(4, 4, j + 1)
+fig.suptitle("Novel samples Generated from random noise")
+for j in range(64):
+    plt.subplot(8, 8, j + 1)
+    plt.xticks([])
+    plt.yticks([])
     plt.imshow(decoded_g[j, :, :], cmap="gray")
+
+plt.savefig("novel samples")
 plt.show()
+
+
+# %% Interpolation
+def interpolate(sample1, sample2, model):
+    """
+    two samples to work on
+    :param sample1: either noise or original sample from the test set
+    :param sample2: same
+    :param model: either Encoder or Generator
+    """
+    latent_vec1, latent_vec2 = model(sample1), model(sample2)
+    a_range = [i * 0.1 for i in range(11)]  # 0.1,...,1.0
+    conv_vecs = []
+    for a in a_range:
+        conv = a*latent_vec1+(1-a)*latent_vec2
+        conv_vecs.append(conv)
