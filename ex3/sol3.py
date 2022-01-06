@@ -1,14 +1,11 @@
 # %% imports
 import torch.nn
 import torch.nn as nn
-import torchvision.transforms as transforms
-from matplotlib import pyplot as plt
 import torchvision.datasets as datasets
-import random
-from sklearn import svm
-import numpy as np
-from sklearn.metrics import accuracy_score
+import torchvision.transforms as transforms
 import torchvision.utils as vutils
+from matplotlib import pyplot as plt
+from torch.autograd import Variable
 
 
 # %% loading data
@@ -506,7 +503,8 @@ class Generator(nn.Module):
     def __init__(self, latent_dim):
         super(Generator, self).__init__()
         self.latent_dim = latent_dim
-        self.relu = nn.ReLU()
+        self.drop = nn.Dropout(0.1)
+        self.leakyRelu = nn.LeakyReLU(0.2)
         self.fc1 = nn.Linear(28, 64)
         self.fc2 = nn.Linear(64, 1)
         self.flatten = nn.Flatten(start_dim=1)
@@ -516,10 +514,12 @@ class Generator(nn.Module):
     def forward(self, im):
         im = self.fc1(im)
         im = self.batchNorm(im)
-        im = self.relu(im)
+        im = self.leakyRelu(im)
+        self.drop = nn.Dropout(0.1)
         im = self.fc2(im)
         im = self.batchNorm(im)
-        im = self.relu(im)
+        im = self.leakyRelu(im)
+        self.drop = nn.Dropout(0.1)
         im = self.flatten(im)  # dim is (batch_size,28*10=280)
         im = self.fc3(im)
         return im
@@ -533,6 +533,7 @@ class Discriminator(nn.Module):
     def __init__(self, latent_dim):
         super(Discriminator, self).__init__()
         self.latent_dim = latent_dim
+        self.drop = nn.Dropout(0.1)
         self.leakyRelu = nn.LeakyReLU(0.2)
         self.sigmoid = nn.Sigmoid()
         self.fc1 = nn.Linear(latent_dim, 256)
@@ -543,10 +544,13 @@ class Discriminator(nn.Module):
     def forward(self, im):
         im = self.fc1(im)
         im = self.leakyRelu(im)
+        im = self.drop(im)
         im = self.fc2(im)
         im = self.leakyRelu(im)
+        im = self.drop(im)
         im = self.fc3(im)
         im = self.leakyRelu(im)
+        im = self.drop(im)
         im = self.fc4(im)
         im = self.sigmoid(im)
         return im
@@ -674,16 +678,101 @@ plt.show()
 
 
 # %% Interpolation
-def interpolate(sample1, sample2, model):
+def interpolate(model, is_generator):
     """
-    two samples to work on
-    :param sample1: either noise or original sample from the test set
-    :param sample2: same
+    :param is_generator: boolean indicating which model were working on
     :param model: either Encoder or Generator
     """
-    latent_vec1, latent_vec2 = model(sample1), model(sample2)
-    a_range = [i * 0.1 for i in range(11)]  # 0.1,...,1.0
-    conv_vecs = []
-    for a in a_range:
-        conv = a*latent_vec1+(1-a)*latent_vec2
-        conv_vecs.append(conv)
+    model_name = f"Model- {'Generator' if is_generator else 'Encoder'}"
+    print(model_name)
+    num_rows, num_cols = 5, 10
+    print(f"interpolating 2 latent vectors, {num_rows} times (different couple every time)...")
+    fig, axs = plt.subplots(num_rows, num_cols)
+    fig.suptitle(f"Interpolation with {model_name}")
+    test_iter = iter(test_loader)
+    for i in range(num_rows):
+        if is_generator:
+            sample1, sample2 = torch.rand(BATCH_SIZE, 1, 28, 28), torch.rand(BATCH_SIZE, 1, 28, 28)
+        else:  # encoder
+            images = test_iter.next()[0][:2, :, :, :] / 255
+            sample1, sample2 = torch.unsqueeze(images[0], 1), torch.unsqueeze(images[1], 1)
+        latent_vec1, latent_vec2 = model(sample1), model(sample2)
+        a_range = [i * 0.1 for i in range(num_cols + 1)]  # 0,0.1,...,1.0
+        decoded_convs = [decoder(a * latent_vec1 + (1 - a) * latent_vec2) for a in a_range]
+        decoded_to_plot = [item[0][0].detach() for item in decoded_convs]
+        for j in range(num_cols):
+            axs[i, j].imshow(decoded_to_plot[j], cmap="gray")
+    plt.savefig(f"Interpolation with {model_name}")
+    plt.show()
+
+
+interpolate(G, True)
+
+
+# %% Conditional-GAN - we use the same architecture, with additional labels input that is concatenated
+class CondGenerator(nn.Module):
+    """
+    the generator class performs on random noise and outputs a latent space vector
+    (Same as the encoder)
+    """
+
+    def __init__(self, latent_dim):
+        super(CondGenerator, self).__init__()
+        num_classes = 10
+        im_size = 784
+        self.label_embedding = nn.Embedding(num_classes, num_classes)
+        self.latent_dim = latent_dim
+        self.relu = nn.ReLU()
+        self.fc1 = nn.Linear(im_size + num_classes, 64)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, latent_dim)
+        self.batchNorm = nn.BatchNorm2d(1)
+
+    def forward(self, im, labels):
+        """
+
+        :param im: some noise inout
+        :param labels: the labels we want
+        :return:
+        """
+        im = im.view(im.size(0), 784)  # we flatted the image from (batch,1,28,28) to (batch,784) so its easy to concat
+        im = torch.cat([im, self.label_embedding(labels)])
+
+        im = self.fc1(im)
+        im = self.batchNorm(im)
+        im = self.relu(im)
+        im = self.fc2(im)
+        im = self.batchNorm(im)
+        im = self.relu(im)
+        im = self.fc3(im)
+        return im
+
+
+class CondDiscriminator(nn.Module):
+    """
+    the discriminator class classifies real and fake (outputted from our generator) latent space vectors
+    """
+
+    def __init__(self, latent_dim):
+        super(CondDiscriminator, self).__init__()
+        num_classes = 10
+        self.label_embedding = nn.Embedding(num_classes, num_classes)
+        self.latent_dim = latent_dim
+        self.leakyRelu = nn.LeakyReLU(0.2)
+        self.sigmoid = nn.Sigmoid()
+        self.fc1 = nn.Linear(latent_dim + num_classes, 256)
+        self.fc2 = nn.Linear(256, 64)
+        self.fc3 = nn.Linear(64, 32)
+        self.fc4 = nn.Linear(32, 1)
+
+    def forward(self, im, labels):
+        im = torch.cat([im, self.label_embedding(labels)])
+        im = self.fc1(im)
+        im = self.leakyRelu(im)
+        im = self.fc2(im)
+        im = self.leakyRelu(im)
+        im = self.fc3(im)
+        im = self.leakyRelu(im)
+        im = self.fc4(im)
+        im = self.sigmoid(im)
+        return im
