@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 from matplotlib import pyplot as plt
 from torch.autograd import Variable
+import numpy as np
 
 
 # %% loading data
@@ -570,112 +571,114 @@ optimizerD = torch.optim.Adam(D.parameters(), lr=0.0002, betas=(0.5, 0.999))
 optimizerG = torch.optim.Adam(G.parameters(), lr=0.0002, betas=(0.5, 0.999))
 img_list, G_losses, D_losses = [], [], []
 generated_by_G = []  # every epoch we add an example
-# %% Train - test iteration
-iters = 0
-for epoch in range(num_epochs):
-    for i, data in enumerate(train_loader, 0):  # batches
-        ############################
-        # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
-        ###########################
-        # Train with all-real batch
 
-        D.zero_grad()
-        # Format batch
-        real_cpu = encoder(data[0] / 255)  # encode the data first
-        label = torch.full((BATCH_SIZE,), real_label, dtype=torch.float)
-        # Forward pass real batch through D
-        output = D(real_cpu).view(-1)
-        # Calculate loss on all-real batch
-        errD_real = criterion(output, label)
-        # Calculate gradients for D in backward pass
-        errD_real.backward()
-        D_x = output.mean().item()
 
-        # Train with all-fake batch
-        noise = torch.rand(BATCH_SIZE, 1, 28, 28)
-        # Generate fake image batch with G
-        fake = G(noise)
-        label.fill_(fake_label)
-        # Classify all fake batch with D
-        output = D(fake.detach()).view(-1)
-        # Calculate D's loss on the all-fake batch
-        errD_fake = criterion(output, label)
-        # Calculate the gradients for this batch, accumulated (summed) with previous gradients
-        errD_fake.backward()
-        D_G_z1 = output.mean().item()
-        # Compute error of D as sum over the fake and the real batches
-        errD = errD_real + errD_fake
-        # Update D
-        optimizerD.step()
-
-        ############################
-        # (2) Update G network: maximize log(D(G(z)))
-        ###########################
-        G.zero_grad()
-        label.fill_(real_label)  # fake labels are real for generator cost
-        # Since we just updated D, perform another forward pass of all-fake batch through D
-        output = D(fake).view(-1)
-        # Calculate G's loss based on this output
-        errG = criterion(output, label)
-        # Calculate gradients for G
-        errG.backward()
-        D_G_z2 = output.mean().item()
-        # Update G
-        optimizerG.step()
-
-        # Output training stats
-        if i % 50 == 0:
-            print(f"[{epoch}/{num_epochs}][{i}/{len(train_loader)}]\t"
-                  f"Loss_D: {errD.item():.4}\t"
-                  f"Loss_G:{errG.item():.4}\t"
-                  f"D(x):{D_x:.4}\t"
-                  f"D(G(z)): {D_G_z1:.4} / {D_G_z2:.4}")
-
-        # Save Losses for plotting later
-        G_losses.append(errG.item())
-        D_losses.append(errD.item())
-
-        # Check how the generator is doing by saving G's output on fixed_noise
-        if (iters % 50 == 0) or ((epoch == num_epochs - 1) and (i == len(train_loader) - 1)):
-            with torch.no_grad():
-                fake = G(fixed_noise).detach().cpu()
-                decoded = decoder(fake)
-        img_list.append(vutils.make_grid(decoded, padding=2, normalize=True))
-        iters += 1
-    # plotting current result:
-    fake = G(fixed_noise)
-    G_then_decoder = decoder(fake)[0][0].detach()
-    generated_by_G.append(G_then_decoder)
-    plt.title(f"after GENERATOR (epoch {epoch})")
-    plt.imshow(G_then_decoder)
-    plt.show()
-# %% GAN loss
-plt.figure(figsize=(10, 5))
-plt.title("G & D Training loss")
-plt.plot(G_losses, label="G")
-plt.plot(D_losses, label="D")
-plt.xlabel("iterations")
-plt.ylabel("Loss")
-plt.legend()
-plt.ylim([0.5, 4])
-plt.savefig("GAN train loss")
-plt.show()
-# %% plotting decoded
-fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
-fake = G(fixed_noise)
-decoded = decoder(fake)
-decoded_g = decoded[:64, 0, :, :].detach()
-fig = plt.figure()  # plots the re-constucted example
-fig.suptitle("Novel samples Generated from random noise")
-for j in range(64):
-    plt.subplot(8, 8, j + 1)
-    plt.xticks([])
-    plt.yticks([])
-    plt.imshow(decoded_g[j, :, :], cmap="gray")
-
-plt.savefig("novel samples")
-plt.show()
-
+# # %% Train - test iteration
+# iters = 0
+# for epoch in range(num_epochs):
+#     for i, data in enumerate(train_loader, 0):  # batches
+#         ############################
+#         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+#         ###########################
+#         # Train with all-real batch
+#
+#         D.zero_grad()
+#         # Format batch
+#         real_cpu = encoder(data[0] / 255)  # encode the data first
+#         label = torch.full((BATCH_SIZE,), real_label, dtype=torch.float)
+#         # Forward pass real batch through D
+#         output = D(real_cpu).view(-1)
+#         # Calculate loss on all-real batch
+#         errD_real = criterion(output, label)
+#         # Calculate gradients for D in backward pass
+#         errD_real.backward()
+#         D_x = output.mean().item()
+#
+#         # Train with all-fake batch
+#         noise = torch.rand(BATCH_SIZE, 1, 28, 28)
+#         # Generate fake image batch with G
+#         fake = G(noise)
+#         label.fill_(fake_label)
+#         # Classify all fake batch with D
+#         output = D(fake.detach()).view(-1)
+#         # Calculate D's loss on the all-fake batch
+#         errD_fake = criterion(output, label)
+#         # Calculate the gradients for this batch, accumulated (summed) with previous gradients
+#         errD_fake.backward()
+#         D_G_z1 = output.mean().item()
+#         # Compute error of D as sum over the fake and the real batches
+#         errD = errD_real + errD_fake
+#         # Update D
+#         optimizerD.step()
+#
+#         ############################
+#         # (2) Update G network: maximize log(D(G(z)))
+#         ###########################
+#         G.zero_grad()
+#         label.fill_(real_label)  # fake labels are real for generator cost
+#         # Since we just updated D, perform another forward pass of all-fake batch through D
+#         output = D(fake).view(-1)
+#         # Calculate G's loss based on this output
+#         errG = criterion(output, label)
+#         # Calculate gradients for G
+#         errG.backward()
+#         D_G_z2 = output.mean().item()
+#         # Update G
+#         optimizerG.step()
+#
+#         # Output training stats
+#         if i % 50 == 0:
+#             print(f"[{epoch}/{num_epochs}][{i}/{len(train_loader)}]\t"
+#                   f"Loss_D: {errD.item():.4}\t"
+#                   f"Loss_G:{errG.item():.4}\t"
+#                   f"D(x):{D_x:.4}\t"
+#                   f"D(G(z)): {D_G_z1:.4} / {D_G_z2:.4}")
+#
+#         # Save Losses for plotting later
+#         G_losses.append(errG.item())
+#         D_losses.append(errD.item())
+#
+#         # Check how the generator is doing by saving G's output on fixed_noise
+#         if (iters % 50 == 0) or ((epoch == num_epochs - 1) and (i == len(train_loader) - 1)):
+#             with torch.no_grad():
+#                 fake = G(fixed_noise).detach().cpu()
+#                 decoded = decoder(fake)
+#         img_list.append(vutils.make_grid(decoded, padding=2, normalize=True))
+#         iters += 1
+#     # plotting current result:
+#     fake = G(fixed_noise)
+#     G_then_decoder = decoder(fake)[0][0].detach()
+#     generated_by_G.append(G_then_decoder)
+#     plt.title(f"after GENERATOR (epoch {epoch})")
+#     plt.imshow(G_then_decoder)
+#     plt.show()
+# # %% GAN loss
+# plt.figure(figsize=(10, 5))
+# plt.title("G & D Training loss")
+# plt.plot(G_losses, label="G")
+# plt.plot(D_losses, label="D")
+# plt.xlabel("iterations")
+# plt.ylabel("Loss")
+# plt.legend()
+# plt.ylim([0.5, 4])
+# plt.savefig("GAN train loss")
+# plt.show()
+# # %% plotting decoded
+# fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
+# fake = G(fixed_noise)
+# decoded = decoder(fake)
+# decoded_g = decoded[:64, 0, :, :].detach()
+# fig = plt.figure()  # plots the re-constucted example
+# fig.suptitle("Novel samples Generated from random noise")
+# for j in range(64):
+#     plt.subplot(8, 8, j + 1)
+#     plt.xticks([])
+#     plt.yticks([])
+#     plt.imshow(decoded_g[j, :, :], cmap="gray")
+#
+# plt.savefig("novel samples")
+# plt.show()
+#
 
 # %% Interpolation
 def interpolate(model, is_generator):
@@ -706,7 +709,7 @@ def interpolate(model, is_generator):
     plt.show()
 
 
-interpolate(G, True)
+# interpolate(G, True)
 
 
 # %% Conditional-GAN - we use the same architecture, with additional labels input that is concatenated
@@ -722,11 +725,11 @@ class CondGenerator(nn.Module):
         im_size = 784
         self.label_embedding = nn.Embedding(num_classes, num_classes)
         self.latent_dim = latent_dim
-        self.relu = nn.ReLU()
+        self.leakyRelu = nn.LeakyReLU()
+        self.tanh = nn.Tanh()
         self.fc1 = nn.Linear(im_size + num_classes, 64)
         self.fc2 = nn.Linear(64, 32)
         self.fc3 = nn.Linear(32, latent_dim)
-        self.batchNorm = nn.BatchNorm2d(1)
 
     def forward(self, im, labels):
         """
@@ -736,15 +739,13 @@ class CondGenerator(nn.Module):
         :return:
         """
         im = im.view(im.size(0), 784)  # we flatted the image from (batch,1,28,28) to (batch,784) so its easy to concat
-        im = torch.cat([im, self.label_embedding(labels)])
-
+        im = torch.cat([im, self.label_embedding(labels)], 1)
         im = self.fc1(im)
-        im = self.batchNorm(im)
-        im = self.relu(im)
+        im = self.leakyRelu(im)
         im = self.fc2(im)
-        im = self.batchNorm(im)
-        im = self.relu(im)
+        im = self.leakyRelu(im)
         im = self.fc3(im)
+        im = self.tanh(im)
         return im
 
 
@@ -760,13 +761,13 @@ class CondDiscriminator(nn.Module):
         self.latent_dim = latent_dim
         self.leakyRelu = nn.LeakyReLU(0.2)
         self.sigmoid = nn.Sigmoid()
-        self.fc1 = nn.Linear(latent_dim + num_classes, 256)
-        self.fc2 = nn.Linear(256, 64)
-        self.fc3 = nn.Linear(64, 32)
-        self.fc4 = nn.Linear(32, 1)
+        self.fc1 = nn.Linear(latent_dim + num_classes, 1024)
+        self.fc2 = nn.Linear(1024, 512)
+        self.fc3 = nn.Linear(512, 64)
+        self.fc4 = nn.Linear(64, 1)
 
     def forward(self, im, labels):
-        im = torch.cat([im, self.label_embedding(labels)])
+        im = torch.cat([im, self.label_embedding(labels)], 1)
         im = self.fc1(im)
         im = self.leakyRelu(im)
         im = self.fc2(im)
@@ -776,3 +777,119 @@ class CondDiscriminator(nn.Module):
         im = self.fc4(im)
         im = self.sigmoid(im)
         return im
+
+
+# %% Initializers for the C-GAN
+# BATCH_SIZE = 200
+# train_loader = torch.utils.data.DataLoader(mnist_train, batch_size=BATCH_SIZE)
+# test_loader = torch.utils.data.DataLoader(mnist_test, batch_size=BATCH_SIZE)
+cD, cG = CondDiscriminator(latent_dim), CondGenerator(latent_dim)
+# criterion = nn.BCELoss()
+# num_epochs = 30
+# fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
+# real_label, fake_label = 1., 0.
+optimizer_cD = torch.optim.Adam(cD.parameters(), lr=1e-4, betas=(0.5, 0.999))
+optimizer_cG = torch.optim.Adam(cG.parameters(), lr=1e-4, betas=(0.5, 0.999))
+cG_losses, cD_losses = [], []
+generated_by_cG = []  # every epoch we add an example
+# %% Train - test iteration
+for epoch in range(num_epochs):
+    for i, data in enumerate(train_loader, 0):  # batches
+        ############################
+        # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+        ###########################
+        # Train with all-real batch
+        data_not_encoded, real_y = data[0] / 255, data[1]
+        cD.zero_grad()
+        # Format batch
+        real_data = encoder(data_not_encoded)
+        ones_or_zeros = torch.full((BATCH_SIZE,), real_label, dtype=torch.float)  # ones
+        # Forward pass real batch through D
+        output = cD(real_data, real_y).view(-1)
+        # Calculate loss on all-real batch
+        errcD_real = criterion(output, ones_or_zeros)
+        # Calculate gradients for D in backward pass
+        errcD_real.backward()
+        cD_x = output.mean().item()
+
+        # Train with all-fake batch
+        noise = torch.rand(BATCH_SIZE, 1, 28, 28)
+        fake_y = Variable(torch.LongTensor(np.random.randint(0, 10, BATCH_SIZE)))
+        # Generate fake image batch with G
+        fake = cG(noise, fake_y)
+        ones_or_zeros.fill_(fake_label)  # zeros
+        # Classify all fake batch with D
+        output = cD(fake.detach(), fake_y).view(-1)
+        # Calculate D's loss on the all-fake batch
+        err_cD_fake = criterion(output, ones_or_zeros)
+        # Calculate the gradients for this batch, accumulated (summed) with previous gradients
+        err_cD_fake.backward()
+        cD_cG_z1 = output.mean().item()
+        # Compute error of D as sum over the fake and the real batches
+        err_cD = errcD_real + err_cD_fake
+        # Update D
+        optimizer_cD.step()
+
+        ############################
+        # (2) Update G network: maximize log(D(G(z)))
+        ###########################
+        cG.zero_grad()
+        ones_or_zeros.fill_(real_label)  # fake labels are real for generator cost (ones)
+        # Since we just updated D, perform another forward pass of all-fake batch through D
+        output = cD(fake, fake_y).view(-1)
+        # Calculate G's loss based on this output
+        err_cG = criterion(output, ones_or_zeros)
+        # Calculate gradients for G
+        err_cG.backward()
+        cD_cG_z2 = output.mean().item()
+        # Update G
+        optimizer_cG.step()
+
+        # Output training stats
+        if i % 50 == 0:
+            print(f"[{epoch}/{num_epochs}][{i}/{len(train_loader)}]\t"
+                  f"Loss_cD: {err_cD.item():.4}\t"
+                  f"Loss_cG:{err_cG.item():.4}\t"
+                  f"cD(x):{cD_x:.4}\t"
+                  f"cD(cG(z)): {cD_cG_z1:.4} / {cD_cG_z2:.4}")
+
+        # Save Losses for plotting later
+        cG_losses.append(err_cG.item())
+        cD_losses.append(err_cD.item())
+
+    # now we want to plot one of every possible digit, starting with some noise
+    all_labels = Variable(torch.LongTensor(np.arange(10)))  # [0,1,...,9]
+    ten_random_noises = torch.rand(10, 1, 28, 28)
+    fake = cG(ten_random_noises, all_labels)
+    cG_then_decoder = decoder(fake)
+    generated_by_cG.append(cG_then_decoder[0][0].detach())
+    grid = vutils.make_grid(cG_then_decoder, nrow=5, normalize=True).permute(1, 2, 0).numpy()
+    plt.imshow(grid)
+    plt.show()
+# %% GAN loss
+plt.figure(figsize=(10, 5))
+plt.title("cG & cD Training loss")
+plt.plot(cG_losses, label="cG")
+plt.plot(cD_losses, label="cD")
+plt.xlabel("iterations")
+plt.ylabel("Loss")
+plt.legend()
+plt.ylim([0.5, 4])
+plt.savefig("cGAN train loss")
+plt.show()
+# %% plotting decoded
+# fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
+# fake = G(fixed_noise)
+# decoded = decoder(fake)
+# decoded_g = decoded[:64, 0, :, :].detach()
+# fig = plt.figure()  # plots the re-constucted example
+# fig.suptitle("Novel samples Generated from random noise")
+# for j in range(64):
+#     plt.subplot(8, 8, j + 1)
+#     plt.xticks([])
+#     plt.yticks([])
+#     plt.imshow(decoded_g[j, :, :], cmap="gray")
+#
+# plt.savefig("novel samples")
+# plt.show()
+# #
