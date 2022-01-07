@@ -446,52 +446,51 @@ train_size, test_size = len(train_loader), len(test_loader)
 num_epochs = 10
 criterion = nn.MSELoss()
 
-
 # %%
-# for epoch in range(num_epochs):
-#     cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
-#
-#     print(f"Epoch [{epoch + 1}/{num_epochs}]")
-#     train_loss, test_loss = 0, 0
-#     # TRAIN
-#     for train_batch in train_loader:  # train batch
-#         optim.zero_grad()
-#         train_images = train_batch[0] / 255  # we dont need the labels for now, also we normalize
-#         train_images = train_images.to(device)
-#         cur_train_batch += 1
-#         if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
-#         out = decoder(encoder(train_images))
-#         loss = criterion(out, train_images)
-#         loss.backward()
-#         optim.step()
-#         train_loss += loss.item()
-#
-#     # TEST
-#     with torch.no_grad():
-#         for test_batch in test_loader:  # test batch
-#             test_images = test_batch[0] / 255
-#             test_images = test_images.to(device)
-#             cur_test_batch += 1
-#             if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
-#             out = decoder(encoder(test_images))
-#             loss = criterion(out, test_images)
-#             test_loss += loss.item()
-#
-#     train_loss = train_loss / train_size
-#     test_loss = test_loss / test_size
-#     train_loss_arr.append(train_loss)
-#     test_loss_arr.append(test_loss)
-#
-#     print(
-#         f"Train Loss: {train_loss:.4f}, "
-#         f"Test Loss: {test_loss:.4f}, "
-#     )
-# # %% check AE result again:
-# plot_ae_reconstruction(encoder, decoder)
-# plt.plot(train_loss_arr, label="train")
-# plt.plot(test_loss_arr, label="test")
-# plt.legend()
-# plt.show()
+for epoch in range(num_epochs):
+    cur_train_batch, cur_test_batch = 0, 0  # for printing progress per epoch
+
+    print(f"Epoch [{epoch + 1}/{num_epochs}]")
+    train_loss, test_loss = 0, 0
+    # TRAIN
+    for train_batch in train_loader:  # train batch
+        optim.zero_grad()
+        train_images = train_batch[0] / 255  # we dont need the labels for now, also we normalize
+        train_images = train_images.to(device)
+        cur_train_batch += 1
+        if cur_train_batch % 100 == 0: print(f"batch: [{cur_train_batch}/{train_size}]", end="\r")
+        out = decoder(encoder(train_images))
+        loss = criterion(out, train_images)
+        loss.backward()
+        optim.step()
+        train_loss += loss.item()
+
+    # TEST
+    with torch.no_grad():
+        for test_batch in test_loader:  # test batch
+            test_images = test_batch[0] / 255
+            test_images = test_images.to(device)
+            cur_test_batch += 1
+            if cur_test_batch % 100 == 0: print(f"batch: [{cur_test_batch}/{test_size}]", end="\r")
+            out = decoder(encoder(test_images))
+            loss = criterion(out, test_images)
+            test_loss += loss.item()
+
+    train_loss = train_loss / train_size
+    test_loss = test_loss / test_size
+    train_loss_arr.append(train_loss)
+    test_loss_arr.append(test_loss)
+
+    print(
+        f"Train Loss: {train_loss:.4f}, "
+        f"Test Loss: {test_loss:.4f}, "
+    )
+# %% check AE result again:
+plot_ae_reconstruction(encoder, decoder)
+plt.plot(train_loss_arr, label="train")
+plt.plot(test_loss_arr, label="test")
+plt.legend()
+plt.show()
 
 
 # %% GAN implementation
@@ -564,7 +563,7 @@ train_loader = torch.utils.data.DataLoader(mnist_train, batch_size=BATCH_SIZE)
 test_loader = torch.utils.data.DataLoader(mnist_test, batch_size=BATCH_SIZE)
 D, G = Discriminator(latent_dim), Generator(latent_dim)
 criterion = nn.BCELoss()
-num_epochs = 30
+num_epochs = 20
 fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
 real_label, fake_label = 1., 0.
 optimizerD = torch.optim.Adam(D.parameters(), lr=0.0002, betas=(0.5, 0.999))
@@ -727,9 +726,9 @@ class CondGenerator(nn.Module):
         self.latent_dim = latent_dim
         self.leakyRelu = nn.LeakyReLU()
         self.tanh = nn.Tanh()
-        self.fc1 = nn.Linear(im_size + num_classes, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, latent_dim)
+        self.fc1 = nn.Linear(im_size + num_classes, 256)
+        self.fc2 = nn.Linear(256, 512)
+        self.fc3 = nn.Linear(512, latent_dim)
 
     def forward(self, im, labels):
         """
@@ -745,7 +744,6 @@ class CondGenerator(nn.Module):
         im = self.fc2(im)
         im = self.leakyRelu(im)
         im = self.fc3(im)
-        im = self.tanh(im)
         return im
 
 
@@ -761,19 +759,23 @@ class CondDiscriminator(nn.Module):
         self.latent_dim = latent_dim
         self.leakyRelu = nn.LeakyReLU(0.2)
         self.sigmoid = nn.Sigmoid()
+        self.drop = nn.Dropout(0.3)
         self.fc1 = nn.Linear(latent_dim + num_classes, 1024)
         self.fc2 = nn.Linear(1024, 512)
-        self.fc3 = nn.Linear(512, 64)
-        self.fc4 = nn.Linear(64, 1)
+        self.fc3 = nn.Linear(512, 256)
+        self.fc4 = nn.Linear(256, 1)
 
     def forward(self, im, labels):
         im = torch.cat([im, self.label_embedding(labels)], 1)
         im = self.fc1(im)
         im = self.leakyRelu(im)
+        im = self.drop(im)
         im = self.fc2(im)
         im = self.leakyRelu(im)
+        im = self.drop(im)
         im = self.fc3(im)
         im = self.leakyRelu(im)
+        im = self.drop(im)
         im = self.fc4(im)
         im = self.sigmoid(im)
         return im
@@ -792,6 +794,7 @@ optimizer_cD = torch.optim.Adam(cD.parameters(), lr=1e-4, betas=(0.5, 0.999))
 optimizer_cG = torch.optim.Adam(cG.parameters(), lr=1e-4, betas=(0.5, 0.999))
 cG_losses, cD_losses = [], []
 generated_by_cG = []  # every epoch we add an example
+print(f"{num_epochs} Epochs")
 # %% Train - test iteration
 for epoch in range(num_epochs):
     for i, data in enumerate(train_loader, 0):  # batches
@@ -864,6 +867,7 @@ for epoch in range(num_epochs):
     cG_then_decoder = decoder(fake)
     generated_by_cG.append(cG_then_decoder[0][0].detach())
     grid = vutils.make_grid(cG_then_decoder, nrow=5, normalize=True).permute(1, 2, 0).numpy()
+    plt.title(f"Epoch {epoch}")
     plt.imshow(grid)
     plt.show()
 # %% GAN loss
@@ -877,19 +881,15 @@ plt.legend()
 plt.ylim([0.5, 4])
 plt.savefig("cGAN train loss")
 plt.show()
-# %% plotting decoded
-# fixed_noise = torch.rand(BATCH_SIZE, 1, 28, 28)
-# fake = G(fixed_noise)
-# decoded = decoder(fake)
-# decoded_g = decoded[:64, 0, :, :].detach()
-# fig = plt.figure()  # plots the re-constucted example
-# fig.suptitle("Novel samples Generated from random noise")
-# for j in range(64):
-#     plt.subplot(8, 8, j + 1)
-#     plt.xticks([])
-#     plt.yticks([])
-#     plt.imshow(decoded_g[j, :, :], cmap="gray")
-#
-# plt.savefig("novel samples")
-# plt.show()
-# #
+# %% variability when plotting only some digit
+for digit in range(10):
+    digit_label = Variable(torch.LongTensor(np.array([digit])))
+    noise_variants = [torch.randn(1, 1, 28, 28), 2 * torch.randn(1, 1, 28, 28),
+                      torch.randn(1, 1, 28, 28),
+                      2 * torch.randn(1, 1, 28, 28)]
+    fakes = [cG(noise, digit_label) for noise in noise_variants]
+    decoded_fakes = [decoder(fake) for fake in fakes]
+    grid = vutils.make_grid(torch.concat(decoded_fakes), nrow=5, normalize=True).permute(1, 2, 0).numpy()
+    plt.title(f"variability when plotting only {digit}")
+    plt.imshow(grid)
+    plt.show()
