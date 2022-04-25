@@ -11,7 +11,7 @@ Chapters recap:
 | Rerurrent-NN                     | Elman network, Backpropagation through time, LSTM, GRU         |  
 | Attention Layers                 | Attention, self Attention, Multi-head Attention, Transformers  |  
 | Auto-Encoders                    | Auto-Encoders, VAE, WAE                                        |   
-| Generative Models                | GAN, cGAN, GLOW, GLOW                                          |   
+| Generative Models                | GAN, cGAN, GLOW, GLO                                          |   
 | Optimizations                    | Sharp/Smooth minima, Momentum, AdaGrad, Adam                   |   
 
 
